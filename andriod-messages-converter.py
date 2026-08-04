@@ -80,6 +80,7 @@ def main():
 
     # 1. Connect to the database file
     conn = sqlite3.connect(sys.argv[1])
+    conn.row_factory = sqlite3.Row
 
     # 2. Create a cursor object
     cursor = conn.cursor()
@@ -98,73 +99,75 @@ def main():
 
         msg["Application"] = "Android-Google-Messages"
 
-        msg["Database-ID"] = str(row[0])
+        msg["Database-ID"] = str(row["_id"])
 
-        msg["Date-Unix-Timestamp-Milliseconds"] = str(row[5])
+        msg["Date-Unix-Timestamp-Milliseconds"] = str(row["date"])
 
-        msg["Date-Sent-Unix-Timestamp-Milliseconds"] = str(row[6])
+        msg["Date-Sent-Unix-Timestamp-Milliseconds"] = str(row["date_sent"])
 
-        if row[7]:
-            msg["Protocol"] = str(row[7])
+        if row["protocol"]:
+            msg["Protocol"] = str(row["protocol"])
         else:
             msg["Protocol"] = ""
 
-        if row[14]:
-            msg["Service-Center"] = row[14]
+        if row["service_center"]:
+            msg["Service-Center"] = row["service_center"]
         else:
             msg["Service-Center"] = ""
 
-        if row[9]:
-            status_string = db_status_to_str(row[9])
+        if row["status"]:
+            status_string = db_status_to_str(row["status"])
             if "Unknown" == status_string:
-                print("Unknow status: {}".format(row[9]))
+                print("Unknow status: {}".format(row["status"]))
                 print(row)
                 break
             else:
-                msg["Status"] = str(row[9]) + "; " + status_string
+                msg["Status"] = str(row["status"]) + "; " + status_string
         else:
             msg["Status"] = ""
 
-        if row[10]:
-            type_string = db_type_to_str(row[10])
+        if row["type"]:
+            type_string = db_type_to_str(row["type"])
             if "Unknown" == type_string:
-                print("Unknow type: {}".format(row[10]))
+                print("Unknow type: {}".format(row["type"]))
                 print(row)
                 break
             else:
-                msg["Type"] = str(row[10]) + "; " + type_string
+                msg["Type"] = str(row["type"]) + "; " + type_string
         else:
             msg["Type"] = ""
 
         # common email headers
-        if 0 == row[6]:
-            local_datetime = datetime.datetime.fromtimestamp(row[5] / 1000, la_tz)
+        if 0 == row["date_sent"]:
+            local_datetime = datetime.datetime.fromtimestamp(row["date"] / 1000, la_tz)
         else:
-            local_datetime = datetime.datetime.fromtimestamp(row[6] / 1000, la_tz)
+            local_datetime = datetime.datetime.fromtimestamp(
+                row["date_sent"] / 1000, la_tz
+            )
 
         msg["Date"] = email.utils.format_datetime(local_datetime)
 
-        match row[10]:
+        match row["type"]:
             case 1:
-                msg["From"] = row[2]
+                msg["From"] = row["address"]
                 msg["To"] = sys.argv[2]
             case 2 | 5:
                 msg["From"] = sys.argv[2]
-                msg["To"] = row[2]
+                msg["To"] = row["address"]
             case _:
-                print("Unknow type: {}".format(row[10]))
+                print("Unknow type: {}".format(row["type"]))
                 print(row)
                 break
 
-        if row[12]:
-            msg["Subject"] = row[12]
+        if row["subject"]:
+            msg["Subject"] = row["subject"]
         else:
             msg["Subject"] = ""
 
-        if row[13]:
-            msg.set_content(row[13])
+        if row["body"]:
+            msg.set_content(row["body"])
 
-        filename = str(row[0]) + ".eml"
+        filename = str(row["_id"]) + ".eml"
 
         if os.path.exists(filename):
             print("filename {} exists".format(filename))
