@@ -93,7 +93,7 @@ def main():
 
     la_tz = zoneinfo.ZoneInfo("Asia/Shanghai")
 
-    # 5. Loop through and print the results
+    # 5. Loop through
     for row in rows:
         msg = email.message.EmailMessage()
 
@@ -105,17 +105,17 @@ def main():
 
         msg["Date-Sent-Unix-Timestamp-Milliseconds"] = str(row["date_sent"])
 
-        if row["protocol"]:
+        if row["protocol"] is not None:
             msg["Protocol"] = str(row["protocol"])
         else:
             msg["Protocol"] = ""
 
-        if row["service_center"]:
+        if row["service_center"] is not None:
             msg["Service-Center"] = row["service_center"]
         else:
             msg["Service-Center"] = ""
 
-        if row["status"]:
+        if row["status"] is not None:
             status_string = db_status_to_str(row["status"])
             if "Unknown" == status_string:
                 print("Unknow status: {}".format(row["status"]))
@@ -126,7 +126,7 @@ def main():
         else:
             msg["Status"] = ""
 
-        if row["type"]:
+        if row["type"] is not None:
             type_string = db_type_to_str(row["type"])
             if "Unknown" == type_string:
                 print("Unknow type: {}".format(row["type"]))
@@ -159,12 +159,12 @@ def main():
                 print(row)
                 break
 
-        if row["subject"]:
+        if row["subject"] is not None:
             msg["Subject"] = row["subject"]
         else:
             msg["Subject"] = ""
 
-        if row["body"]:
+        if row["body"] is not None:
             msg.set_content(row["body"])
 
         filename = str(row["_id"]) + ".eml"
