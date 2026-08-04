@@ -13,8 +13,8 @@ import email.utils
 # address TEXT,                     /* row index 02 */
 # m_size INTEGER,                   /* row index 03 */
 # person INTEGER,                   /* row index 04 */
-# date INTEGER,                     /* row index 05, received timestamp */
-# date_sent INTEGER DEFAULT 0,      /* row index 06, sent timestamp of sender */
+# date INTEGER,                     /* row index 05, received unix timestamp */
+# date_sent INTEGER DEFAULT 0,      /* row index 06, sent unix timestamp of sender */
 # protocol INTEGER,                 /* row index 07, Protocol used by the message, its mostly 0 in case of SMS messages. */
 # read INTEGER DEFAULT 0,           /* row index 08, Read Message = 1, Unread Message = 0. */
 # status INTEGER DEFAULT -1,        /* row index 09, None = -1, Complete = 0, Pending = 32, Failed = 64. */
@@ -98,11 +98,11 @@ def main():
 
         msg["Application"] = "Android-Google-Messages"
 
-        msg["Date-Milliseconds"] = str(row[5])
+        msg["Database-ID"] = str(row[0])
 
-        msg["Date-Sent-Milliseconds"] = str(row[6])
+        msg["Date-Unix-Timestamp-Milliseconds"] = str(row[5])
 
-        msg["ID"] = str(row[0])
+        msg["Date-Sent-Unix-Timestamp-Milliseconds"] = str(row[6])
 
         if row[7]:
             msg["Protocol"] = str(row[7])
