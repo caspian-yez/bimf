@@ -93,13 +93,13 @@ def main():
     # 4. Fetch the data
     rows = cursor.fetchall()
 
-    la_tz = zoneinfo.ZoneInfo("Asia/Shanghai")
+    timezone = zoneinfo.ZoneInfo("UTC")
 
     # 5. Loop through
     for row in rows:
         msg = email.message.EmailMessage()
 
-        msg["Application"] = "Android-Google-Messages"
+        msg["Application"] = "Google-Messages"
 
         msg["Database-ID"] = str(row["_id"])
 
@@ -141,10 +141,12 @@ def main():
 
         # common email headers
         if 0 == row["date_sent"]:
-            local_datetime = datetime.datetime.fromtimestamp(row["date"] / 1000, la_tz)
+            local_datetime = datetime.datetime.fromtimestamp(
+                row["date"] / 1000, timezone
+            )
         else:
             local_datetime = datetime.datetime.fromtimestamp(
-                row["date_sent"] / 1000, la_tz
+                row["date_sent"] / 1000, timezone
             )
 
         msg["Date"] = email.utils.format_datetime(local_datetime)
