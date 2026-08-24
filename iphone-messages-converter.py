@@ -3,12 +3,147 @@
 
 import sys
 import os
+import datetime
+import zoneinfo
 import sqlite3
 import email.message
 import email.utils
 
+COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS = 978307200
 
-def sms_db_process(db_files_cursor, db_sms_path):
+
+def get_attachment_info_from_file_db(
+    db_file_cursor: sqlite3.Cursor, guid: str, base_path: str
+) -> dict:
+    result: dict = {"result": False, "path": ""}
+    db_file_cursor.execute(
+        "SELECT * FROM Files WHERE relativePath LIKE '%{}%';".format(guid)
+    )
+    db_file_rows = db_file_cursor.fetchall()
+    if 1 == len(db_file_rows):
+        for db_file_row in db_file_rows:
+            result["result"] = True
+            result["path"] = os.path.join(
+                base_path, db_file_row["fileID"][0:2], db_file_row["fileID"]
+            )
+    else:
+        print("ERROR when try to find file using GUID {}".format(guid))
+
+    return result
+
+
+def get_attachment_info(db_sms_cursor: sqlite3.Cursor, attach_id: int) -> dict:
+    result: dict = {"result": False, "guid": "", "transfer_name": "", "total_bytes": 0}
+    # CREATE TABLE attachment (
+    # ROWID INTEGER PRIMARY KEY AUTOINCREMENT,
+    # guid TEXT UNIQUE NOT NULL,
+    # created_date INTEGER DEFAULT 0,
+    # start_date INTEGER DEFAULT 0,
+    # filename TEXT,
+    # uti TEXT,
+    # mime_type TEXT,
+    # transfer_state INTEGER DEFAULT 0,
+    # is_outgoing INTEGER DEFAULT 0,
+    # user_info BLOB,
+    # transfer_name TEXT,
+    # total_bytes INTEGER DEFAULT 0,
+    # is_sticker INTEGER DEFAULT 0,
+    # sticker_user_info BLOB,
+    # attribution_info BLOB,
+    # hide_attachment INTEGER DEFAULT 0)
+    db_sms_cursor.execute("SELECT * FROM attachment WHERE ROWID={}".format(attach_id))
+    db_attachment_rows = db_sms_cursor.fetchall()
+    if 1 == len(db_attachment_rows):
+        for db_attachment_row in db_attachment_rows:
+            result["result"] = True
+            result["guid"] = db_attachment_row["guid"]
+            result["transfer_name"] = db_attachment_row["transfer_name"]
+            result["mime_type"] = db_attachment_row["mime_type"]
+            result["total_bytes"] = db_attachment_row["total_bytes"]
+    else:
+        print("ERROR when try to find attachment using attach_id: {}".format(attach_id))
+
+    return result
+
+
+def get_attachment_name_and_path(
+    db_file_cursor: sqlite3.Cursor,
+    db_sms_cursor: sqlite3.Cursor,
+    row_id: int,
+    base_path: str,
+) -> dict:
+    # one attachment info:
+    # "name": "",
+    # "path": "",
+    # "size": 0,
+    # "mime_type": "",
+    result: dict = {"result": False, "attachments_list": None}
+    attachments_list: list = []
+    # CREATE TABLE message_attachment_join (
+    # message_id INTEGER REFERENCES message (ROWID) ON DELETE CASCADE,
+    # attachment_id INTEGER REFERENCES attachment (ROWID) ON DELETE CASCADE,
+    # UNIQUE(message_id, attachment_id))
+    db_sms_cursor.execute(
+        "SELECT * FROM message_attachment_join WHERE message_id={}".format(row_id)
+    )
+    db_message_attachment_rows = db_sms_cursor.fetchall()
+    for db_msg_attach_row in db_message_attachment_rows:
+        attachment_info = get_attachment_info(
+            db_sms_cursor, db_msg_attach_row["attachment_id"]
+        )
+        if attachment_info["result"]:
+            attachment_info_in_file_db = get_attachment_info_from_file_db(
+                db_file_cursor, attachment_info["guid"], base_path
+            )
+            if attachment_info_in_file_db["result"]:
+                one_attachemnt_info: dict = {}
+                one_attachemnt_info["name"] = attachment_info["transfer_name"]
+                one_attachemnt_info["path"] = attachment_info_in_file_db["path"]
+                one_attachemnt_info["size"] = attachment_info["total_bytes"]
+                one_attachemnt_info["mime_type"] = attachment_info["mime_type"]
+                attachments_list.append(one_attachemnt_info)
+
+    if 0 != len(attachments_list):
+        result["result"] = True
+        result["attachments_list"] = attachments_list
+    else:
+        print("ERROR when try to find attachment id using msg id {}".format(row_id))
+
+    return result
+
+
+def get_phone_number_by_handle(cursor: sqlite3.Cursor, handle: int):
+    # CREATE TABLE handle (
+    # ROWID INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
+    # id TEXT NOT NULL,
+    # country TEXT,
+    # service TEXT NOT NULL,
+    # uncanonicalized_id TEXT,
+    # UNIQUE (id, service) )
+    phone_number = None
+    cursor.execute("SELECT * FROM handle WHERE ROWID={}".format(handle))
+    db_handle_rows = cursor.fetchall()
+    if 1 == len(db_handle_rows):
+        for handle_row in db_handle_rows:
+            phone_number = handle_row["id"]
+    else:
+        print(
+            "ERROR: None or more than one phone number found using handle {}".format(
+                handle
+            )
+        )
+
+    return phone_number
+
+
+def save_as_eml(eml_text: str, guid_name: str):
+    filename = guid_name + ".eml"
+    f = open(filename, "w")
+    f.write(eml_text)
+    f.close()
+
+
+def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path: str):
     if not os.path.exists(db_sms_path):
         print("Cannot find {}".format(db_sms_path))
         return
@@ -83,9 +218,105 @@ def sms_db_process(db_files_cursor, db_sms_path):
     db_sms_cursor.execute("SELECT * FROM message")
     db_sms_rows = db_sms_cursor.fetchall()
 
+    local_timezone = zoneinfo.ZoneInfo("UTC")
+
     for db_sms_row in db_sms_rows:
+        msg = email.message.EmailMessage()
+
+        if db_sms_row["account"] is None:
+            msg["Account"] = ""
+        else:
+            msg["Account"] = db_sms_row["account"]
+
+        if db_sms_row["account_guid"] is None:
+            msg["Account-GUID"] = ""
+        else:
+            msg["Account-GUID"] = db_sms_row["account_guid"]
+
+        msg["Application"] = "iMessage"
+
+        msg["Date-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date"])
+
+        # msg["Date-Delivered-Cocoa-Timestamp-Seconds"] = str(
+        #     db_sms_row["date_delivered"]
+        # )
+
+        msg["GUID"] = db_sms_row["guid"]
+
+        if db_sms_row["service"] is None:
+            msg["Service"] = ""
+        else:
+            msg["Service"] = db_sms_row["service"]
+
+        if db_sms_row["service_center"] is None:
+            msg["Service-Center"] = ""
+        else:
+            msg["Service-Center"] = db_sms_row["service_center"]
+
+        local_datetime = datetime.datetime.fromtimestamp(
+            db_sms_row["date"] + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
+            local_timezone,
+        )
+        msg["Date"] = email.utils.format_datetime(local_datetime)
+
+        phone_number = get_phone_number_by_handle(
+            db_sms_cursor, db_sms_row["handle_id"]
+        )
+        if phone_number is None:
+            print("ERROR: cannot find phone number")
+            break
+
+        if 0 == db_sms_row["is_from_me"]:
+            msg["From"] = phone_number
+            msg["To"] = sys.argv[2]
+        else:
+            msg["From"] = sys.argv[2]
+            msg["To"] = phone_number
+
+        if db_sms_row["subject"] is None:
+            msg["Subject"] = ""
+        else:
+            msg["Subject"] = db_sms_row["subject"]
+
+        if db_sms_row["text"] is not None:
+            msg.set_content(db_sms_row["text"])
+
         if 0 != db_sms_row["cache_has_attachments"]:
-            print(db_sms_row["text"])
+            attachments = get_attachment_name_and_path(
+                db_files_cursor, db_sms_cursor, db_sms_row["ROWID"], base_path
+            )
+            if attachments["result"]:
+                for attachment in attachments["attachments_list"]:
+                    if os.path.exists(attachment["path"]):
+                        file = open(attachment["path"], "rb")
+                        file_data = file.read()
+                        if attachment["size"] != len(file_data):
+                            print(
+                                "msg guid: {}, {} file size mismatch, actual: {}, size in database: {}".format(
+                                    db_sms_row["guid"],
+                                    attachment["name"],
+                                    len(file_data),
+                                    attachment["size"],
+                                )
+                            )
+                        maintype, subtype = attachment["mime_type"].split("/", 1)
+                        msg.add_attachment(
+                            file_data,
+                            maintype=maintype,
+                            subtype=subtype,
+                            filename=attachment["name"],
+                        )
+                        file.close()
+                    else:
+                        print(
+                            "msg guid: {}, cannot find {} for {}".format(
+                                db_sms_row["guid"],
+                                attachment["path"],
+                                attachment["name"],
+                            )
+                        )
+
+        save_as_eml(msg.as_string(), db_sms_row["guid"])
 
     db_sms_conn.close()
 
@@ -124,7 +355,7 @@ def main():
                 db_files_row["fileID"][0:2],
                 db_files_row["fileID"],
             )
-            sms_db_process(db_files_cursor, db_sms_path)
+            sms_db_process(db_files_cursor, db_sms_path, sys.argv[1])
     else:
         print('ERROR: Multiple "Library/SMS/sms.db" found')
 
