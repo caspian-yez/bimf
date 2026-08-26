@@ -278,7 +278,9 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
         else:
             msg["Subject"] = db_sms_row["subject"]
 
-        if db_sms_row["text"] is not None:
+        if db_sms_row["text"] is None:
+            continue
+        else:
             msg.set_content(db_sms_row["text"])
 
         if 0 != db_sms_row["cache_has_attachments"]:
