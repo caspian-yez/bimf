@@ -344,11 +344,15 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
             print("ERROR: cannot find phone number")
             break
 
+        my_phone_number = sys.argv[2]
+        if db_sms_row["destination_caller_id"] is not None:
+            my_phone_number = db_sms_row["destination_caller_id"]
+
         if 0 == db_sms_row["is_from_me"]:
             msg["From"] = phone_number
-            msg["To"] = sys.argv[2]
+            msg["To"] = my_phone_number
         else:
-            msg["From"] = sys.argv[2]
+            msg["From"] = my_phone_number
             msg["To"] = phone_number
 
         if db_sms_row["subject"] is None:
