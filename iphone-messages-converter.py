@@ -335,6 +335,10 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
                 )
                 break
 
+        if 0 != int(sys.argv[3]):
+            if int(sys.argv[3]) != local_datetime.year:
+                continue
+
         msg["Date"] = email.utils.format_datetime(local_datetime)
 
         phone_number = get_phone_number_by_handle(
@@ -406,13 +410,14 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
 
 
 def main():
-    if 3 != len(sys.argv):
-        print("need parameters: <database filepath> <phone number>")
+    if 4 != len(sys.argv):
+        print("need parameters: <database filepath> <phone number> <year>")
         return
 
     print(sys.argv[0])  # program name
     print(sys.argv[1])  # unencrypted backup path
-    print(sys.argv[2])  # reserved
+    print(sys.argv[2])  # my phone number
+    print(sys.argv[3])  # Year, 0 is all
 
     # CREATE TABLE Files (
     # fileID TEXT PRIMARY KEY,
