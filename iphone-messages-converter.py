@@ -12,6 +12,21 @@ import email.utils
 COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS = 978307200
 
 
+def auto_dec_seconds_or_nanoseconds(cocoa_timestamp):
+    """
+    this function is limited
+    won't work after 2032-09-09
+    """
+    if 0 == cocoa_timestamp:
+        return "ns"
+    if datetime.datetime.now().year > 2030:
+        return "unknow"
+    if cocoa_timestamp / 1000000000 > 1:
+        return "ns"
+    else:
+        return "s"
+
+
 def get_attachment_info_from_file_db(
     db_file_cursor: sqlite3.Cursor, guid: str, base_path: str
 ) -> dict:
@@ -210,7 +225,15 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
     # associated_message_range_location INTEGER DEFAULT 0,
     # associated_message_range_length INTEGER DEFAULT 0,
     # time_expressive_send_played INTEGER,
-    # message_summary_info BLOB
+    # message_summary_info BLOB,
+    # ck_sync_state INTEGER DEFAULT 0,
+    # ck_record_id TEXT DEFAULT NULL,
+    # ck_record_change_tag TEXT DEFAULT NULL,
+    # destination_caller_id TEXT DEFAULT NULL,
+    # sr_ck_sync_state INTEGER DEFAULT 0,
+    # sr_ck_record_id TEXT DEFAULT NULL,
+    # sr_ck_record_change_tag TEXT DEFAULT NULL,
+    # is_corrupt INTEGER DEFAULT 0
     # )
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
@@ -235,13 +258,50 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
 
         msg["Application"] = "iMessage"
 
-        msg["Date-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date"])
+        match (auto_dec_seconds_or_nanoseconds(db_sms_row["date"])):
+            case "s":
+                msg["Date-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date"])
+            case "ns":
+                msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(db_sms_row["date"])
+            case _:
+                print(
+                    "ERROR: {} cannot determin date timestamp unit".format(
+                        db_sms_row["guid"]
+                    )
+                )
+                break
 
-        msg["Date-Read-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date_read"])
+        match (auto_dec_seconds_or_nanoseconds(db_sms_row["date_read"])):
+            case "s":
+                msg["Date-Read-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date_read"])
+            case "ns":
+                msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(
+                    db_sms_row["date_read"]
+                )
+            case _:
+                print(
+                    "ERROR: {} cannot determin date_read timestamp unit".format(
+                        db_sms_row["guid"]
+                    )
+                )
+                break
 
-        msg["Date-Delivered-Cocoa-Timestamp-Seconds"] = str(
-            db_sms_row["date_delivered"]
-        )
+        match (auto_dec_seconds_or_nanoseconds(db_sms_row["date_delivered"])):
+            case "s":
+                msg["Date-Delivered-Cocoa-Timestamp-Seconds"] = str(
+                    db_sms_row["date_delivered"]
+                )
+            case "ns":
+                msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
+                    db_sms_row["date_delivered"]
+                )
+            case _:
+                print(
+                    "ERROR: {} cannot determin date_delivered timestamp unit".format(
+                        db_sms_row["guid"]
+                    )
+                )
+                break
 
         msg["GUID"] = db_sms_row["guid"]
 
@@ -255,10 +315,26 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
         else:
             msg["Service-Center"] = db_sms_row["service_center"]
 
-        local_datetime = datetime.datetime.fromtimestamp(
-            db_sms_row["date"] + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
-            local_timezone,
-        )
+        match (auto_dec_seconds_or_nanoseconds(db_sms_row["date"])):
+            case "s":
+                local_datetime = datetime.datetime.fromtimestamp(
+                    db_sms_row["date"] + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
+                    local_timezone,
+                )
+            case "ns":
+                local_datetime = datetime.datetime.fromtimestamp(
+                    db_sms_row["date"] / 1000000000
+                    + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
+                    local_timezone,
+                )
+            case _:
+                print(
+                    "ERROR: {} cannot determin date timestamp unit".format(
+                        db_sms_row["guid"]
+                    )
+                )
+                break
+
         msg["Date"] = email.utils.format_datetime(local_datetime)
 
         phone_number = get_phone_number_by_handle(
