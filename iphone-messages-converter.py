@@ -237,9 +237,11 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
 
         msg["Date-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date"])
 
-        # msg["Date-Delivered-Cocoa-Timestamp-Seconds"] = str(
-        #     db_sms_row["date_delivered"]
-        # )
+        msg["Date-Read-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date_read"])
+
+        msg["Date-Delivered-Cocoa-Timestamp-Seconds"] = str(
+            db_sms_row["date_delivered"]
+        )
 
         msg["GUID"] = db_sms_row["guid"]
 
