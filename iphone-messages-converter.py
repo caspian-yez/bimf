@@ -256,7 +256,7 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
         else:
             msg["Account-GUID"] = db_sms_row["account_guid"]
 
-        msg["Application"] = "iMessage"
+        msg["Application"] = "Apple-Messages"
 
         match (auto_dec_seconds_or_nanoseconds(db_sms_row["date"])):
             case "s":
