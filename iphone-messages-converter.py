@@ -233,7 +233,36 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
     # sr_ck_sync_state INTEGER DEFAULT 0,
     # sr_ck_record_id TEXT DEFAULT NULL,
     # sr_ck_record_change_tag TEXT DEFAULT NULL,
-    # is_corrupt INTEGER DEFAULT 0
+    # is_corrupt INTEGER DEFAULT 0,
+    # reply_to_guid TEXT DEFAULT NULL,
+    # sort_id INTEGER DEFAULT 0,
+    # is_spam INTEGER DEFAULT 0,
+    # has_unseen_mention INTEGER DEFAULT 0,
+    # thread_originator_guid TEXT DEFAULT NULL,
+    # thread_originator_part TEXT DEFAULT NULL,
+    # syndication_ranges TEXT DEFAULT NULL,
+    # was_delivered_quietly INTEGER DEFAULT 0,
+    # did_notify_recipient INTEGER DEFAULT 0,
+    # synced_syndication_ranges TEXT DEFAULT NULL,
+    # date_retracted INTEGER DEFAULT 0,
+    # date_edited INTEGER DEFAULT 0,
+    # was_detonated INTEGER DEFAULT 0,
+    # part_count INTEGER,
+    # is_stewie INTEGER DEFAULT 0,
+    # is_kt_verified INTEGER DEFAULT 0,
+    # is_sos INTEGER DEFAULT 0,
+    # is_critical INTEGER DEFAULT 0,
+    # bia_reference_id TEXT DEFAULT NULL,
+    # fallback_hash TEXT DEFAULT NULL,
+    # associated_message_emoji TEXT DEFAULT NULL,
+    # is_pending_satellite_send INTEGER DEFAULT 0,
+    # needs_relay INTEGER DEFAULT 0,
+    # schedule_type INTEGER DEFAULT 0,
+    # schedule_state INTEGER DEFAULT 0,
+    # sent_or_received_off_grid INTEGER DEFAULT 0,
+    # date_recovered INTEGER DEFAULT 0,
+    # is_time_sensitive INTEGER DEFAULT 0,
+    # ck_chat_id TEXT
     # )
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
@@ -244,6 +273,10 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
     local_timezone = zoneinfo.ZoneInfo("UTC")
 
     for db_sms_row in db_sms_rows:
+
+        if db_sms_row["text"] is None:
+            continue
+
         msg = email.message.EmailMessage()
 
         if db_sms_row["account"] is None:
@@ -260,7 +293,9 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
 
         match (auto_dec_seconds_or_nanoseconds(db_sms_row["date"])):
             case "s":
-                msg["Date-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date"])
+                msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(
+                    db_sms_row["date"] * 1000000000
+                )
             case "ns":
                 msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(db_sms_row["date"])
             case _:
@@ -273,7 +308,9 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
 
         match (auto_dec_seconds_or_nanoseconds(db_sms_row["date_read"])):
             case "s":
-                msg["Date-Read-Cocoa-Timestamp-Seconds"] = str(db_sms_row["date_read"])
+                msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(
+                    db_sms_row["date_read"] * 1000000000
+                )
             case "ns":
                 msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(
                     db_sms_row["date_read"]
@@ -288,8 +325,8 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
 
         match (auto_dec_seconds_or_nanoseconds(db_sms_row["date_delivered"])):
             case "s":
-                msg["Date-Delivered-Cocoa-Timestamp-Seconds"] = str(
-                    db_sms_row["date_delivered"]
+                msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
+                    db_sms_row["date_delivered"] * 1000000000
                 )
             case "ns":
                 msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
@@ -365,10 +402,7 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
         else:
             msg["Subject"] = db_sms_row["subject"]
 
-        if db_sms_row["text"] is None:
-            continue
-        else:
-            msg.set_content(db_sms_row["text"])
+        msg.set_content(db_sms_row["text"])
 
         if 0 != db_sms_row["cache_has_attachments"]:
             attachments = get_attachment_name_and_path(
