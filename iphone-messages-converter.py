@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 
-import sys
 import os
 import datetime
 import zoneinfo
 import sqlite3
 import email.message
 import email.utils
-
-COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS = 978307200
+import argparse
+from libbimfpy.cocoa_timestamp import *
+from libbimfpy.timestamp_filename import *
 
 
 def auto_dec_seconds_or_nanoseconds(cocoa_timestamp):
@@ -66,7 +66,7 @@ def get_attachment_info(db_sms_cursor: sqlite3.Cursor, attach_id: int) -> dict:
     # sticker_user_info BLOB,
     # attribution_info BLOB,
     # hide_attachment INTEGER DEFAULT 0)
-    db_sms_cursor.execute("SELECT * FROM attachment WHERE ROWID={}".format(attach_id))
+    db_sms_cursor.execute("SELECT * FROM attachment WHERE ROWID={};".format(attach_id))
     db_attachment_rows = db_sms_cursor.fetchall()
     if 1 == len(db_attachment_rows):
         for db_attachment_row in db_attachment_rows:
@@ -99,7 +99,7 @@ def get_attachment_name_and_path(
     # attachment_id INTEGER REFERENCES attachment (ROWID) ON DELETE CASCADE,
     # UNIQUE(message_id, attachment_id))
     db_sms_cursor.execute(
-        "SELECT * FROM message_attachment_join WHERE message_id={}".format(row_id)
+        "SELECT * FROM message_attachment_join WHERE message_id={};".format(row_id)
     )
     db_message_attachment_rows = db_sms_cursor.fetchall()
     for db_msg_attach_row in db_message_attachment_rows:
@@ -136,7 +136,7 @@ def get_phone_number_by_handle(cursor: sqlite3.Cursor, handle: int):
     # uncanonicalized_id TEXT,
     # UNIQUE (id, service) )
     phone_number = None
-    cursor.execute("SELECT * FROM handle WHERE ROWID={}".format(handle))
+    cursor.execute("SELECT * FROM handle WHERE ROWID={};".format(handle))
     db_handle_rows = cursor.fetchall()
     if 1 == len(db_handle_rows):
         for handle_row in db_handle_rows:
@@ -151,14 +151,19 @@ def get_phone_number_by_handle(cursor: sqlite3.Cursor, handle: int):
     return phone_number
 
 
-def save_as_eml(eml_text: str, guid_name: str):
-    filename = guid_name + ".eml"
-    f = open(filename, "w")
-    f.write(eml_text)
-    f.close()
+def save_as_eml(eml_text: str, guid_name: str, timestamp: datetime.datetime):
+    filename = get_timestamp_filename(timestamp, guid_name) + ".eml"
+    if os.path.exists(filename):
+        print('ERROR eml "{}"already exists'.format(filename))
+    else:
+        f = open(filename, "w")
+        f.write(eml_text)
+        f.close()
 
 
-def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path: str):
+def sms_db_process(
+    db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path: str, year: int
+):
     if not os.path.exists(db_sms_path):
         print("Cannot find {}".format(db_sms_path))
         return
@@ -267,7 +272,7 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
     db_sms_cursor = db_sms_conn.cursor()
-    db_sms_cursor.execute("SELECT * FROM message")
+    db_sms_cursor.execute("SELECT * FROM message;")
     db_sms_rows = db_sms_cursor.fetchall()
 
     local_timezone = zoneinfo.ZoneInfo("UTC")
@@ -275,7 +280,8 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
     for db_sms_row in db_sms_rows:
 
         if db_sms_row["text"] is None:
-            continue
+            if db_sms_row["attributedBody"] is None:
+                continue
 
         msg = email.message.EmailMessage()
 
@@ -291,54 +297,13 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
 
         msg["Application"] = "Apple-Messages"
 
-        match (auto_dec_seconds_or_nanoseconds(db_sms_row["date"])):
-            case "s":
-                msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(
-                    db_sms_row["date"] * 1000000000
-                )
-            case "ns":
-                msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(db_sms_row["date"])
-            case _:
-                print(
-                    "ERROR: {} cannot determin date timestamp unit".format(
-                        db_sms_row["guid"]
-                    )
-                )
-                break
+        msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(db_sms_row["date"])
 
-        match (auto_dec_seconds_or_nanoseconds(db_sms_row["date_read"])):
-            case "s":
-                msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(
-                    db_sms_row["date_read"] * 1000000000
-                )
-            case "ns":
-                msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(
-                    db_sms_row["date_read"]
-                )
-            case _:
-                print(
-                    "ERROR: {} cannot determin date_read timestamp unit".format(
-                        db_sms_row["guid"]
-                    )
-                )
-                break
+        msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(db_sms_row["date_read"])
 
-        match (auto_dec_seconds_or_nanoseconds(db_sms_row["date_delivered"])):
-            case "s":
-                msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
-                    db_sms_row["date_delivered"] * 1000000000
-                )
-            case "ns":
-                msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
-                    db_sms_row["date_delivered"]
-                )
-            case _:
-                print(
-                    "ERROR: {} cannot determin date_delivered timestamp unit".format(
-                        db_sms_row["guid"]
-                    )
-                )
-                break
+        msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
+            db_sms_row["date_delivered"]
+        )
 
         msg["GUID"] = db_sms_row["guid"]
 
@@ -352,31 +317,17 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
         else:
             msg["Service-Center"] = db_sms_row["service_center"]
 
-        match (auto_dec_seconds_or_nanoseconds(db_sms_row["date"])):
-            case "s":
-                local_datetime = datetime.datetime.fromtimestamp(
-                    db_sms_row["date"] + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
-                    local_timezone,
-                )
-            case "ns":
-                local_datetime = datetime.datetime.fromtimestamp(
-                    db_sms_row["date"] / 1000000000
-                    + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
-                    local_timezone,
-                )
-            case _:
-                print(
-                    "ERROR: {} cannot determin date timestamp unit".format(
-                        db_sms_row["guid"]
-                    )
-                )
-                break
+        datetime_timestamp = datetime.datetime.fromtimestamp(
+            db_sms_row["date"] / 1000000000
+            + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
+            local_timezone,
+        )
 
-        if 0 != int(sys.argv[3]):
-            if int(sys.argv[3]) != local_datetime.year:
+        if 0 != year:
+            if year != datetime_timestamp.year:
                 continue
 
-        msg["Date"] = email.utils.format_datetime(local_datetime)
+        msg["Date"] = email.utils.format_datetime(datetime_timestamp)
 
         phone_number = get_phone_number_by_handle(
             db_sms_cursor, db_sms_row["handle_id"]
@@ -385,10 +336,7 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
             print("ERROR: cannot find phone number")
             break
 
-        my_phone_number = sys.argv[2]
-        if "destination_caller_id" in db_sms_row.keys():
-            if db_sms_row["destination_caller_id"] is not None:
-                my_phone_number = db_sms_row["destination_caller_id"]
+        my_phone_number = db_sms_row["destination_caller_id"]
 
         if 0 == db_sms_row["is_from_me"]:
             msg["From"] = phone_number
@@ -402,6 +350,7 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
         else:
             msg["Subject"] = db_sms_row["subject"]
 
+        # TODO: parse db_sms_row["attributedBody"]
         msg.set_content(db_sms_row["text"])
 
         if 0 != db_sms_row["cache_has_attachments"]:
@@ -439,20 +388,14 @@ def sms_db_process(db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path:
                             )
                         )
 
-        save_as_eml(msg.as_string(), db_sms_row["guid"])
+        save_as_eml(msg.as_string(), db_sms_row["guid"], datetime_timestamp)
 
     db_sms_conn.close()
 
 
-def main():
-    if 4 != len(sys.argv):
-        print("need parameters: <database filepath> <phone number> <year>")
-        return
-
-    print(sys.argv[0])  # program name
-    print(sys.argv[1])  # unencrypted backup path
-    print(sys.argv[2])  # my phone number
-    print(sys.argv[3])  # Year, 0 is all
+def main(args):
+    print("Target backup path: {}".format(args.target_backup_path))
+    print("Year {}, 0 is all".format(args.year))
 
     # CREATE TABLE Files (
     # fileID TEXT PRIMARY KEY,
@@ -461,25 +404,27 @@ def main():
     # flags INTEGER,
     # file BLOB
     # )
-    db_files_path = os.path.join(sys.argv[1], "Manifest.db")
+    db_files_path = os.path.join(args.target_backup_path, "Manifest.db")
     print(db_files_path)
     db_files_conn = sqlite3.connect(db_files_path)
     db_files_conn.row_factory = sqlite3.Row
 
     db_files_cursor = db_files_conn.cursor()
     db_files_cursor.execute(
-        'SELECT * FROM Files WHERE relativePath = "Library/SMS/sms.db"'
+        'SELECT * FROM Files WHERE relativePath = "Library/SMS/sms.db";'
     )
     db_files_rows = db_files_cursor.fetchall()
 
     if 1 == len(db_files_rows):
         for db_files_row in db_files_rows:
             db_sms_path = os.path.join(
-                sys.argv[1],
+                args.target_backup_path,
                 db_files_row["fileID"][0:2],
                 db_files_row["fileID"],
             )
-            sms_db_process(db_files_cursor, db_sms_path, sys.argv[1])
+            sms_db_process(
+                db_files_cursor, db_sms_path, args.target_backup_path, args.year
+            )
     else:
         print('ERROR: Multiple "Library/SMS/sms.db" found')
 
@@ -487,4 +432,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    # define each option with: parser.add_argument
+    parser.add_argument(
+        "-t", "--target-backup-path", required=True, help="Path to the target backup"
+    )
+    parser.add_argument(
+        "-y",
+        "--year",
+        type=int,
+        required=True,
+        help="Process this year, all when it is 0",
+    )
+    args = parser.parse_args()  # automatically looks at sys.argv
+    main(args)
