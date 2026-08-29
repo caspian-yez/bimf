@@ -12,21 +12,6 @@ from libbimfpy.cocoa_timestamp import *
 from libbimfpy.timestamp_filename import *
 
 
-def auto_dec_seconds_or_nanoseconds(cocoa_timestamp):
-    """
-    this function is limited
-    won't work after 2032-09-09
-    """
-    if 0 == cocoa_timestamp:
-        return "ns"
-    if datetime.datetime.now().year > 2030:
-        return "unknow"
-    if cocoa_timestamp / 1000000000 > 1:
-        return "ns"
-    else:
-        return "s"
-
-
 def get_attachment_info_from_file_db(
     db_file_cursor: sqlite3.Cursor, guid: str, base_path: str
 ) -> dict:
@@ -275,7 +260,7 @@ def sms_db_process(
     db_sms_cursor.execute("SELECT * FROM message;")
     db_sms_rows = db_sms_cursor.fetchall()
 
-    local_timezone = zoneinfo.ZoneInfo("UTC")
+    timezone_utc = zoneinfo.ZoneInfo("UTC")
 
     for db_sms_row in db_sms_rows:
 
@@ -320,7 +305,7 @@ def sms_db_process(
         datetime_timestamp = datetime.datetime.fromtimestamp(
             db_sms_row["date"] / 1000000000
             + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
-            local_timezone,
+            timezone_utc,
         )
 
         if 0 != year:
