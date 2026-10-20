@@ -8,7 +8,7 @@ import sqlite3
 import email.message
 import email.utils
 import argparse
-from Foundation import NSData, NSUnarchiver
+from libbimfpy.apple_streamtyped import *
 from libbimfpy.cocoa_timestamp import *
 from libbimfpy.timestamp_filename import *
 
@@ -147,18 +147,6 @@ def save_as_eml(eml_text: str, guid_name: str, timestamp: datetime.datetime):
         f.close()
 
 
-def decode_with_nsunarchiver(data):
-    nsdata = NSData.dataWithBytes_length_(data, len(data))
-    obj = NSUnarchiver.unarchiveObjectWithData_(nsdata)
-    if obj is not None and hasattr(obj, "string"):
-        s = obj.string()
-        if s is not None:
-            return s.UTF8String().decode()
-        else:
-            return ""
-    return None
-
-
 def sms_db_process(
     db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path: str, year: int
 ):
@@ -277,8 +265,8 @@ def sms_db_process(
 
     for db_sms_row in db_sms_rows:
 
-        if db_sms_row["text"] is None:
-            if db_sms_row["attributedBody"] is None:
+        if db_sms_row["attributedBody"] is None:
+            if db_sms_row["text"] is None:
                 continue
 
         msg = email.message.EmailMessage()
@@ -351,10 +339,10 @@ def sms_db_process(
         if db_sms_row["attributedBody"] is None:
             msg.set_content(db_sms_row["text"])
         else:
-            body_text = decode_with_nsunarchiver(db_sms_row["attributedBody"])
+            body_text = decode_streamtyped(db_sms_row["attributedBody"])
             if (body_text is None) or (0 == len(body_text)):
                 if db_sms_row["text"] is None:
-                    msg.set_content(body_text)
+                    continue
                 else:
                     msg.set_content(db_sms_row["text"])
             else:
