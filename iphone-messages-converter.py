@@ -148,7 +148,11 @@ def save_as_eml(eml_text: str, guid_name: str, timestamp: datetime.datetime):
 
 
 def sms_db_process(
-    db_files_cursor: sqlite3.Cursor, db_sms_path: str, base_path: str, year: int
+    db_files_cursor: sqlite3.Cursor,
+    db_sms_path: str,
+    base_path: str,
+    year: int,
+    default_number: str,
 ):
     if not os.path.exists(db_sms_path):
         print("Cannot find {}".format(db_sms_path))
@@ -261,12 +265,15 @@ def sms_db_process(
     db_sms_cursor.execute("SELECT * FROM message;")
     db_sms_rows = db_sms_cursor.fetchall()
 
-    timezone_utc = zoneinfo.ZoneInfo("UTC")
-
     for db_sms_row in db_sms_rows:
 
         if db_sms_row["attributedBody"] is None:
             if db_sms_row["text"] is None:
+                print(
+                    "msg guid: {}, both attributedBody and text is empty".format(
+                        db_sms_row["guid"]
+                    )
+                )
                 continue
 
         msg = email.message.EmailMessage()
@@ -283,12 +290,19 @@ def sms_db_process(
 
         msg["Application"] = "Apple-Messages"
 
-        msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(db_sms_row["date"])
+        # older database cocoa timestamp is in seconds
+        msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(
+            get_cocoa_timestamp_in_ns(db_sms_row["date"])
+        )
 
-        msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(db_sms_row["date_read"])
+        # older database cocoa timestamp is in seconds
+        msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(
+            get_cocoa_timestamp_in_ns(db_sms_row["date_read"])
+        )
 
+        # older database cocoa timestamp is in seconds
         msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
-            db_sms_row["date_delivered"]
+            get_cocoa_timestamp_in_ns(db_sms_row["date_delivered"])
         )
 
         msg["GUID"] = db_sms_row["guid"]
@@ -303,11 +317,8 @@ def sms_db_process(
         else:
             msg["Service-Center"] = db_sms_row["service_center"]
 
-        datetime_timestamp = datetime.datetime.fromtimestamp(
-            db_sms_row["date"] / 1000000000
-            + COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS,
-            timezone_utc,
-        )
+        # older database cocoa timestamp is in seconds
+        datetime_timestamp = get_datetime_from_cocoa_timestamp(db_sms_row["date"])
 
         if 0 != year:
             if year != datetime_timestamp.year:
@@ -322,7 +333,11 @@ def sms_db_process(
             print("ERROR: cannot find phone number")
             break
 
-        my_phone_number = db_sms_row["destination_caller_id"]
+        # older database do not have "destination_caller_id"
+        if "destination_caller_id" in db_sms_row.keys():
+            my_phone_number = db_sms_row["destination_caller_id"]
+        else:
+            my_phone_number = default_number
 
         if 0 == db_sms_row["is_from_me"]:
             msg["From"] = phone_number
@@ -418,7 +433,11 @@ def main(args):
                 db_files_row["fileID"],
             )
             sms_db_process(
-                db_files_cursor, db_sms_path, args.target_backup_path, args.year
+                db_files_cursor,
+                db_sms_path,
+                args.target_backup_path,
+                args.year,
+                args.default_number,
             )
     else:
         print('ERROR: Multiple "Library/SMS/sms.db" found')
@@ -433,11 +452,18 @@ if __name__ == "__main__":
         "-t", "--target-backup-path", required=True, help="Path to the target backup"
     )
     parser.add_argument(
+        "-n",
+        "--default-number",
+        required=True,
+        help="in older database destination_caller_id do not exists so user have to set default number",
+    )
+    parser.add_argument(
         "-y",
         "--year",
         type=int,
-        required=True,
+        required=False,
         help="Process this year, all when it is 0",
+        default=0,
     )
     args = parser.parse_args()  # automatically looks at sys.argv
     main(args)

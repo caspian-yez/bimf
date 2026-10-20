@@ -8,18 +8,25 @@ COCOA_TIMESTAMP_UNIX_TIMESTAMP_DIFF_SECONDS = 978307200
 
 
 def auto_dec_seconds_or_nanoseconds(cocoa_timestamp: int) -> str:
-    """
-    this function is limited
-    won't work after 2032-09-09
-    """
-    if 0 == cocoa_timestamp:
-        return "ns"
-    if datetime.datetime.now().year > 2030:
-        return "unknow"
-    if cocoa_timestamp / 1000000000 > 1:
+    if cocoa_timestamp > 1000000000:
         return "ns"
     else:
         return "s"
+
+
+def get_cocoa_timestamp_in_ns(cocoa_timestamp: int) -> int:
+    match (auto_dec_seconds_or_nanoseconds(cocoa_timestamp)):
+        case "s":
+            return cocoa_timestamp * 1000000000
+        case "ns":
+            return cocoa_timestamp
+        case _:
+            print(
+                "ERROR: cannot determin date timestamp unit of value".format(
+                    cocoa_timestamp
+                )
+            )
+            return None
 
 
 def get_datetime_from_cocoa_timestamp(cocoa_timestamp: int) -> datetime.datetime:

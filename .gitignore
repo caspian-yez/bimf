@@ -1,2 +1,3 @@
 *.eml
 *.db
+__pycache__
