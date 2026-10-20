@@ -8,6 +8,7 @@ import sqlite3
 import email.message
 import email.utils
 import argparse
+from Foundation import NSData, NSUnarchiver
 from libbimfpy.cocoa_timestamp import *
 from libbimfpy.timestamp_filename import *
 
@@ -144,6 +145,18 @@ def save_as_eml(eml_text: str, guid_name: str, timestamp: datetime.datetime):
         f = open(filename, "w")
         f.write(eml_text)
         f.close()
+
+
+def decode_with_nsunarchiver(data):
+    nsdata = NSData.dataWithBytes_length_(data, len(data))
+    obj = NSUnarchiver.unarchiveObjectWithData_(nsdata)
+    if obj is not None and hasattr(obj, "string"):
+        s = obj.string()
+        if s is not None:
+            return s.UTF8String().decode()
+        else:
+            return ""
+    return None
 
 
 def sms_db_process(
@@ -335,8 +348,17 @@ def sms_db_process(
         else:
             msg["Subject"] = db_sms_row["subject"]
 
-        # TODO: parse db_sms_row["attributedBody"]
-        msg.set_content(db_sms_row["text"])
+        if db_sms_row["attributedBody"] is None:
+            msg.set_content(db_sms_row["text"])
+        else:
+            body_text = decode_with_nsunarchiver(db_sms_row["attributedBody"])
+            if (body_text is None) or (0 == len(body_text)):
+                if db_sms_row["text"] is None:
+                    msg.set_content(body_text)
+                else:
+                    msg.set_content(db_sms_row["text"])
+            else:
+                msg.set_content(body_text)
 
         if 0 != db_sms_row["cache_has_attachments"]:
             attachments = get_attachment_name_and_path(
