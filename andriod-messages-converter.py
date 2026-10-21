@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 
-import sys
+import argparse
 import os
 import datetime
 import zoneinfo
@@ -71,17 +71,13 @@ def db_status_to_str(num: int) -> str:
     return status_string
 
 
-def main():
-    if 3 != len(sys.argv):
-        print("need parameters: <database filepath> <phone number>")
-        return
-
-    print(sys.argv[0])  # program name
-    print(sys.argv[1])  # database file path
-    print(sys.argv[2])  # phone number
+def main(args):
+    print("database: {}".format(args.database_path))
+    print("default phone number: {}".format(args.default_number))
+    print("year: {}".format(args.year))
 
     # 1. Connect to the database file
-    conn = sqlite3.connect(sys.argv[1])
+    conn = sqlite3.connect(args.database_path)
     conn.row_factory = sqlite3.Row
 
     # 2. Create a cursor object
@@ -149,14 +145,18 @@ def main():
                 row["date_sent"] / 1000, timezone
             )
 
+        if 0 != args.year:
+            if local_datetime.year != args.year:
+                continue
+
         msg["Date"] = email.utils.format_datetime(local_datetime)
 
         match row["type"]:
             case 1:
                 msg["From"] = row["address"]
-                msg["To"] = sys.argv[2]
+                msg["To"] = args.default_number
             case 2 | 5:
-                msg["From"] = sys.argv[2]
+                msg["From"] = args.default_number
                 msg["To"] = row["address"]
             case _:
                 print("Unknow type: {}".format(row["type"]))
@@ -185,4 +185,24 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    # define each option with: parser.add_argument
+    parser.add_argument(
+        "-d", "--database-path", required=True, help="Path to the database"
+    )
+    parser.add_argument(
+        "-n",
+        "--default-number",
+        required=True,
+        help="default number, the user number is not in the database",
+    )
+    parser.add_argument(
+        "-y",
+        "--year",
+        type=int,
+        required=False,
+        help="Process this year, all when it is 0",
+        default=0,
+    )
+    args = parser.parse_args()  # automatically looks at sys.argv
+    main(args)
