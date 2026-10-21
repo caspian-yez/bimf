@@ -217,6 +217,7 @@ def sms_db_process(
     base_path: str,
     year: int,
     default_number: str,
+    skip_write: bool,
 ):
     if not os.path.exists(db_sms_path):
         print("Cannot find {}".format(db_sms_path))
@@ -411,10 +412,10 @@ def sms_db_process(
             break
 
         # older database do not have "destination_caller_id"
+        my_phone_number = default_number
         if "destination_caller_id" in db_sms_row.keys():
-            my_phone_number = db_sms_row["destination_caller_id"]
-        else:
-            my_phone_number = default_number
+            if db_sms_row["destination_caller_id"] is not None:
+                my_phone_number = db_sms_row["destination_caller_id"]
 
         if 0 == db_sms_row["is_from_me"]:
             list_recipients = list()
@@ -481,7 +482,8 @@ def sms_db_process(
                             )
                         )
 
-        save_as_eml(msg.as_string(), db_sms_row["guid"], datetime_timestamp)
+        if not skip_write:
+            save_as_eml(msg.as_string(), db_sms_row["guid"], datetime_timestamp)
 
     db_sms_conn.close()
 
@@ -489,6 +491,7 @@ def sms_db_process(
 def main(args):
     print("Target backup path: {}".format(args.target_backup_path))
     print("Year {}, 0 is all".format(args.year))
+    print("Skip write: {}".format(args.skip_write))
 
     # CREATE TABLE Files (
     # fileID TEXT PRIMARY KEY,
@@ -521,6 +524,7 @@ def main(args):
                 args.target_backup_path,
                 args.year,
                 args.default_number,
+                args.skip_write,
             )
     else:
         print('ERROR: Multiple "Library/SMS/sms.db" found')
@@ -547,6 +551,11 @@ if __name__ == "__main__":
         required=False,
         help="Process this year, all when it is 0",
         default=0,
+    )
+    parser.add_argument(
+        "--skip-write",
+        action="store_true",
+        help="skip writing the eml file, default no skip",
     )
     args = parser.parse_args()  # automatically looks at sys.argv
     main(args)
