@@ -433,17 +433,18 @@ def sms_db_process(
         else:
             msg["Subject"] = db_sms_row["subject"]
 
-        if db_sms_row["attributedBody"] is None:
-            msg.set_content(db_sms_row["text"])
-        else:
+        if db_sms_row["text"] is None:
             body_text = decode_streamtyped(db_sms_row["attributedBody"])
             if (body_text is None) or (0 == len(body_text)):
-                if db_sms_row["text"] is None:
-                    continue
-                else:
-                    msg.set_content(db_sms_row["text"])
+                print(
+                    "ERROR: msg guid {} parse attributedBody failed".format(
+                        db_sms_row["guid"]
+                    )
+                )
             else:
                 msg.set_content(body_text)
+        else:
+            msg.set_content(db_sms_row["text"])
 
         if 0 != db_sms_row["cache_has_attachments"]:
             attachments = get_attachment_name_and_path(
