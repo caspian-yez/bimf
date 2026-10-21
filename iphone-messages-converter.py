@@ -3,7 +3,6 @@
 
 import os
 import datetime
-import zoneinfo
 import sqlite3
 import email.message
 import email.utils
@@ -18,7 +17,7 @@ def get_attachment_info_from_file_db(
 ) -> dict:
     result: dict = {"result": False, "path": ""}
     db_file_cursor.execute(
-        "SELECT * FROM Files WHERE relativePath LIKE '%{}%';".format(guid)
+        'SELECT * FROM "Files" WHERE "relativePath" LIKE "%{}%";'.format(guid)
     )
     db_file_rows = db_file_cursor.fetchall()
     if 1 == len(db_file_rows):
@@ -52,7 +51,9 @@ def get_attachment_info(db_sms_cursor: sqlite3.Cursor, attach_id: int) -> dict:
     # sticker_user_info BLOB,
     # attribution_info BLOB,
     # hide_attachment INTEGER DEFAULT 0)
-    db_sms_cursor.execute("SELECT * FROM attachment WHERE ROWID={};".format(attach_id))
+    db_sms_cursor.execute(
+        'SELECT * FROM "attachment" WHERE "ROWID"={};'.format(attach_id)
+    )
     db_attachment_rows = db_sms_cursor.fetchall()
     if 1 == len(db_attachment_rows):
         for db_attachment_row in db_attachment_rows:
@@ -85,7 +86,7 @@ def get_attachment_name_and_path(
     # attachment_id INTEGER REFERENCES attachment (ROWID) ON DELETE CASCADE,
     # UNIQUE(message_id, attachment_id))
     db_sms_cursor.execute(
-        "SELECT * FROM message_attachment_join WHERE message_id={};".format(row_id)
+        'SELECT * FROM "message_attachment_join" WHERE "message_id"={};'.format(row_id)
     )
     db_message_attachment_rows = db_sms_cursor.fetchall()
     for db_msg_attach_row in db_message_attachment_rows:
@@ -121,8 +122,8 @@ def get_phone_number_by_handle(cursor: sqlite3.Cursor, handle: int):
     # service TEXT NOT NULL,
     # uncanonicalized_id TEXT,
     # UNIQUE (id, service) )
-    phone_number = None
-    cursor.execute("SELECT * FROM handle WHERE ROWID={};".format(handle))
+    phone_number = ""
+    cursor.execute('SELECT * FROM "handle" WHERE "ROWID"={};'.format(handle))
     db_handle_rows = cursor.fetchall()
     if 1 == len(db_handle_rows):
         for handle_row in db_handle_rows:
@@ -135,6 +136,69 @@ def get_phone_number_by_handle(cursor: sqlite3.Cursor, handle: int):
         )
 
     return phone_number
+
+
+def get_phone_number_by_msg_id(cursor: sqlite3.Cursor, msg_id: int) -> list:
+    chat_id = None
+    list_phone_numbers = list()
+
+    # CREATE TABLE chat_message_join (
+    # chat_id INTEGER REFERENCES chat (ROWID) ON DELETE CASCADE,
+    # message_id INTEGER REFERENCES message (ROWID) ON DELETE CASCADE,
+    # message_date INTEGER DEFAULT 0,
+    # PRIMARY KEY (chat_id, message_id)
+    # )
+    cursor.execute(
+        'SELECT * FROM "chat_message_join" WHERE "message_id"={};'.format(msg_id)
+    )
+    chat_message_rows = cursor.fetchall()
+    if 1 == len(chat_message_rows):
+        for chat_message_row in chat_message_rows:
+            chat_id = chat_message_row["chat_id"]
+    else:
+        print(
+            "ERROR: None or more than one chat id found using msg handle {}".format(
+                msg_id
+            )
+        )
+        return list_phone_numbers
+
+    # CREATE TABLE chat_handle_join (
+    #     chat_id INTEGER REFERENCES chat (ROWID) ON DELETE CASCADE,
+    #     handle_id INTEGER REFERENCES handle (ROWID) ON DELETE CASCADE,
+    #     UNIQUE(chat_id, handle_id)
+    # )
+    cursor.execute(
+        'SELECT * FROM "chat_handle_join" WHERE "chat_id"={};'.format(chat_id)
+    )
+    chat_handle_rows = cursor.fetchall()
+    for chat_handle_row in chat_handle_rows:
+        # CREATE TABLE handle (
+        #     ROWID INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
+        #     id TEXT NOT NULL,
+        #     country TEXT,
+        #     service TEXT NOT NULL,
+        #     uncanonicalized_id TEXT,
+        #     person_centric_id TEXT DEFAULT NULL,
+        #     UNIQUE (id, service)
+        # )
+        cursor.execute(
+            'SELECT * FROM "handle" WHERE "ROWID"={};'.format(
+                chat_handle_row["handle_id"]
+            )
+        )
+        handle_rows = cursor.fetchall()
+        if 1 == len(handle_rows):
+            for handle_row in handle_rows:
+                list_phone_numbers.append(handle_row["id"])
+        else:
+            print(
+                "ERROR: None or more than one handle id found using msg handle {}".format(
+                    chat_handle_row["handle_id"]
+                )
+            )
+
+    return list_phone_numbers
 
 
 def save_as_eml(eml_text: str, guid_name: str, timestamp: datetime.datetime):
@@ -262,7 +326,7 @@ def sms_db_process(
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
     db_sms_cursor = db_sms_conn.cursor()
-    db_sms_cursor.execute("SELECT * FROM message;")
+    db_sms_cursor.execute('SELECT * FROM "message";')
     db_sms_rows = db_sms_cursor.fetchall()
 
     for db_sms_row in db_sms_rows:
@@ -326,11 +390,24 @@ def sms_db_process(
 
         msg["Date"] = email.utils.format_datetime(datetime_timestamp)
 
-        phone_number = get_phone_number_by_handle(
+        sender_number = get_phone_number_by_handle(
             db_sms_cursor, db_sms_row["handle_id"]
         )
-        if phone_number is None:
-            print("ERROR: cannot find phone number")
+        if 0 == len(sender_number):
+            print(
+                "ERROR: cannot find phone number by handle_id {}".format(
+                    db_sms_row["handle_id"]
+                )
+            )
+            break
+
+        phone_numbers = get_phone_number_by_msg_id(db_sms_cursor, db_sms_row["ROWID"])
+        if 0 == len(phone_numbers):
+            print(
+                "ERROR: cannot find phone numbers by message id {} and chat id".format(
+                    db_sms_row["ROWID"]
+                )
+            )
             break
 
         # older database do not have "destination_caller_id"
@@ -340,11 +417,16 @@ def sms_db_process(
             my_phone_number = default_number
 
         if 0 == db_sms_row["is_from_me"]:
-            msg["From"] = phone_number
-            msg["To"] = my_phone_number
+            list_recipients = list()
+            list_recipients.append(my_phone_number)
+            for phone_number in phone_numbers:
+                if sender_number != phone_number:
+                    list_recipients.append(phone_number)
+            msg["From"] = sender_number
+            msg["To"] = ", ".join(list_recipients)
         else:
             msg["From"] = my_phone_number
-            msg["To"] = phone_number
+            msg["To"] = ", ".join(phone_numbers)
 
         if db_sms_row["subject"] is None:
             msg["Subject"] = ""
@@ -421,7 +503,7 @@ def main(args):
 
     db_files_cursor = db_files_conn.cursor()
     db_files_cursor.execute(
-        'SELECT * FROM Files WHERE relativePath = "Library/SMS/sms.db";'
+        'SELECT * FROM "Files" WHERE "relativePath"="Library/SMS/sms.db";'
     )
     db_files_rows = db_files_cursor.fetchall()
 
