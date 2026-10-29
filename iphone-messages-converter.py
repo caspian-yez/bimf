@@ -109,7 +109,7 @@ def get_attachment_name_and_path(
         result["result"] = True
         result["attachments_list"] = attachments_list
     else:
-        print("ERROR when try to find attachment id using msg id {}".format(row_id))
+        print("ERROR cannot find attachment id using msg id {}".format(row_id))
 
     return result
 
@@ -488,6 +488,78 @@ def sms_db_process(
     db_sms_conn.close()
 
 
+def sms_db_check_attachments(
+    db_files_cursor: sqlite3.Cursor,
+    db_sms_path: str,
+    base_path: str,
+    year: int,
+):
+    if not os.path.exists(db_sms_path):
+        print("Cannot find {}".format(db_sms_path))
+        return
+    else:
+        print(db_sms_path)
+
+    db_sms_conn = sqlite3.connect(db_sms_path)
+    db_sms_conn.row_factory = sqlite3.Row
+    db_sms_cursor = db_sms_conn.cursor()
+    db_sms_cursor.execute('SELECT * FROM "message";')
+    db_sms_rows = db_sms_cursor.fetchall()
+
+    for db_sms_row in db_sms_rows:
+        if db_sms_row["attributedBody"] is None:
+            if db_sms_row["text"] is None:
+                continue
+
+        # older database cocoa timestamp is in seconds
+        datetime_timestamp = get_datetime_from_cocoa_timestamp(db_sms_row["date"])
+
+        if 0 != year:
+            if year != datetime_timestamp.year:
+                continue
+
+        if 0 != db_sms_row["cache_has_attachments"]:
+            # get text for searching
+            body_text = None
+            if db_sms_row["text"] is None:
+                body_text = decode_streamtyped(db_sms_row["attributedBody"])
+                if (body_text is None) or (0 == len(body_text)):
+                    body_text = ""
+            else:
+                body_text = db_sms_row["text"]
+
+            subject_text = None
+            if db_sms_row["subject"] is None:
+                subject_text = ""
+            else:
+                subject_text = db_sms_row["subject"]
+
+            attachments = get_attachment_name_and_path(
+                db_files_cursor, db_sms_cursor, db_sms_row["ROWID"], base_path
+            )
+            if attachments["result"]:
+                for attachment in attachments["attachments_list"]:
+                    if not os.path.exists(attachment["path"]):
+                        print(
+                            "msg guid: {}, cannot find {} for {}".format(
+                                db_sms_row["guid"],
+                                attachment["path"],
+                                attachment["name"],
+                            )
+                        )
+            else:
+                print(
+                    'msg guid: {} cannot find attachments, datetime: "{}", subject: "{}", text: "{}"'.format(
+                        db_sms_row["guid"],
+                        datetime_timestamp.isoformat(),
+                        subject_text,
+                        body_text,
+                    )
+                )
+
+    db_sms_conn.close()
+
+
 def main(args):
     print("Target backup path: {}".format(args.target_backup_path))
     print("Year {}, 0 is all".format(args.year))
@@ -518,14 +590,22 @@ def main(args):
                 db_files_row["fileID"][0:2],
                 db_files_row["fileID"],
             )
-            sms_db_process(
-                db_files_cursor,
-                db_sms_path,
-                args.target_backup_path,
-                args.year,
-                args.default_number,
-                args.skip_write,
-            )
+            if args.check_attachments:
+                sms_db_check_attachments(
+                    db_files_cursor,
+                    db_sms_path,
+                    args.target_backup_path,
+                    args.year,
+                )
+            else:
+                sms_db_process(
+                    db_files_cursor,
+                    db_sms_path,
+                    args.target_backup_path,
+                    args.year,
+                    args.default_number,
+                    args.skip_write,
+                )
     else:
         print('ERROR: Multiple "Library/SMS/sms.db" found')
 
@@ -551,6 +631,11 @@ if __name__ == "__main__":
         required=False,
         help="Process this year, all when it is 0",
         default=0,
+    )
+    parser.add_argument(
+        "--check-attachments",
+        action="store_true",
+        help="check if the attachments are missing, default not check mode",
     )
     parser.add_argument(
         "--skip-write",
