@@ -30,15 +30,23 @@ CREATE TABLE sms (
 
 |Column |Description    |
 |-------|---------------|
+|`_id`              |Primary key of sms info.   |
+|`thread_id`        |TODO   |
 |`address`          |Phone number of the sender or recipient.   |
+|`m_size`           |Message size.  |
+|`person`           |TODO   |
 |`date`             |Unix timestamp in milliseconds the message was sent or received. |
 |`date_sent`        |Unix timestamp in milliseconds the message was sent.   |
 |`protocol`         |Mostly 0 for sms messages. |
 |`read`             |1 = Read, 0 = Unread.  |
 |`status`           |-1 = None, 0 = Complete, 32 = Pending, 64 = Failed.    |
 |`type`             |1 = Received, 2 = Sent, 3 = Draft, 4 = Outbox, 5 = Failed, 6 = Queued. |
+|`reply_path_present`   |TODO   |
 |`subject`          |Usually NULL for SMS messages. |
 |`body`             |The message text.  |
 |`service_center`   |Service center number. Usually NULL for sent messages. |
 |`locked`           |1 if the message is locked in the messaging app, otherwise 0.  |
 |`sim_id`           |Identifier of the SIM / phone subscription the message belongs to. |
+|`error_code`       |TODO   |
+|`seen`             |TODO   |
+|`ipmsg_id`         |TODO   |
