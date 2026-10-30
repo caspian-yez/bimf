@@ -375,8 +375,8 @@ CREATE TABLE "message" (
 |`message_source`   |TODO   |
 |`associated_message_guid`  |TODO   |
 |`associated_message_type`  |TODO   |
-|`balloon_bundle_id`    |TODO   |
-|`payload_data` |TODO   |
+|`balloon_bundle_id`    |Identifies the iMessage "balloon"/App Message extension​ that produced a given message row. It tells the Messages app (and parsers of chat.db) how to render/handle the row, instead of treating it as plain text. The actual rich content usually lives in: payload_data, attributedBody, related attachment rows.    |
+|`payload_data` |BLOB, typedstream/plist/NSKeyedArchiver    |
 |`expressive_send_style_id` |TODO   |
 |`associated_message_range_location`    |TODO   |
 |`associated_message_range_length`      |TODO   |
@@ -436,3 +436,308 @@ CREATE TABLE message_attachment_join (
 |`attachment_id`    |Table `attachment.ROWID`.  |
 
 This table records `attachment.ROWID`s in a `message.ROWID`.
+
+# trigger `after_delete_on_attachment`
+
+```sql
+CREATE TRIGGER after_delete_on_attachment AFTER DELETE ON attachment BEGIN
+SELECT
+    delete_attachment_path (OLD.filename);
+
+END
+```
+
+Delete attachment file using `attachment.filename`, function `delete_attachment_path` needs to be created.
+
+# trigger `after_delete_on_chat`
+
+```sql
+CREATE TRIGGER after_delete_on_chat AFTER DELETE ON chat BEGIN
+DELETE FROM chat_message_join
+WHERE
+    chat_id = OLD.ROWID;
+
+END
+```
+
+# trigger `after_delete_on_chat_handle_join`
+
+```sql
+CREATE TRIGGER after_delete_on_chat_handle_join AFTER DELETE ON chat_handle_join BEGIN
+DELETE FROM handle
+WHERE
+    handle.ROWID = OLD.handle_id
+    AND (
+        SELECT
+            1
+        from
+            chat_handle_join
+        WHERE
+            handle_id = OLD.handle_id
+        LIMIT
+            1
+    ) IS NULL
+    AND (
+        SELECT
+            1
+        from
+            message
+        WHERE
+            handle_id = OLD.handle_id
+        LIMIT
+            1
+    ) IS NULL
+    AND (
+        SELECT
+            1
+        from
+            message
+        WHERE
+            other_handle = OLD.handle_id
+        LIMIT
+            1
+    ) IS NULL;
+
+END
+```
+
+# trigger `after_delete_on_chat_message_join`
+
+```sql
+CREATE TRIGGER after_delete_on_chat_message_join AFTER DELETE ON chat_message_join BEGIN
+UPDATE message
+SET
+    cache_roomnames = (
+        SELECT
+            group_concat (c.room_name)
+        FROM
+            chat c
+            INNER JOIN chat_message_join j ON c.ROWID = j.chat_id
+        WHERE
+            j.message_id = OLD.message_id
+    )
+WHERE
+    message.ROWID = OLD.message_id;
+
+DELETE FROM message
+WHERE
+    message.ROWID = OLD.message_id
+    AND OLD.message_id NOT IN (
+        SELECT
+            chat_message_join.message_id
+        from
+            chat_message_join
+        WHERE
+            chat_message_join.message_id = OLD.message_id
+        LIMIT
+            1
+    )
+    AND OLD.message_id NOT IN (
+        SELECT
+            chat_recoverable_message_join.message_id
+        from
+            chat_recoverable_message_join
+        WHERE
+            chat_recoverable_message_join.message_id = OLD.message_id
+        LIMIT
+            1
+    );
+
+END
+```
+
+# trigger `after_delete_on_chat_recoverable_message_join`
+
+```sql
+CREATE TRIGGER after_delete_on_chat_recoverable_message_join AFTER DELETE ON chat_recoverable_message_join BEGIN
+UPDATE message
+SET
+    cache_roomnames = (
+        SELECT
+            group_concat (c.room_name)
+        FROM
+            chat c
+            INNER JOIN chat_message_join j ON c.ROWID = j.chat_id
+        WHERE
+            j.message_id = OLD.message_id
+    )
+WHERE
+    message.ROWID = OLD.message_id;
+
+DELETE FROM message
+WHERE
+    message.ROWID = OLD.message_id
+    AND OLD.message_id NOT IN (
+        SELECT
+            chat_message_join.message_id
+        from
+            chat_message_join
+        WHERE
+            chat_message_join.message_id = OLD.message_id
+        LIMIT
+            1
+    )
+    AND OLD.message_id NOT IN (
+        SELECT
+            chat_recoverable_message_join.message_id
+        from
+            chat_recoverable_message_join
+        WHERE
+            chat_recoverable_message_join.message_id = OLD.message_id
+        LIMIT
+            1
+    );
+
+END
+```
+
+# trigger `after_delete_on_message`
+
+```sql
+CREATE TRIGGER after_delete_on_message AFTER DELETE ON message BEGIN
+DELETE FROM handle
+WHERE
+    handle.ROWID = OLD.handle_id
+    AND (
+        SELECT
+            1
+        from
+            chat_handle_join
+        WHERE
+            handle_id = OLD.handle_id
+        LIMIT
+            1
+    ) IS NULL
+    AND (
+        SELECT
+            1
+        from
+            message
+        WHERE
+            handle_id = OLD.handle_id
+        LIMIT
+            1
+    ) IS NULL
+    AND (
+        SELECT
+            1
+        from
+            message
+        WHERE
+            other_handle = OLD.handle_id
+        LIMIT
+            1
+    ) IS NULL;
+
+END
+```
+
+# trigger `after_delete_on_message_attachment_join`
+
+```sql
+CREATE TRIGGER after_delete_on_message_attachment_join AFTER DELETE ON message_attachment_join BEGIN
+DELETE FROM attachment
+WHERE
+    attachment.ROWID = OLD.attachment_id
+    AND (
+        SELECT
+            1
+        from
+            message_attachment_join
+        WHERE
+            attachment_id = OLD.attachment_id
+        LIMIT
+            1
+    ) IS NULL;
+
+END
+```
+
+# trigger `after_delete_on_message_plugin`
+
+```sql
+CREATE TRIGGER after_delete_on_message_plugin AFTER DELETE ON message WHEN OLD.balloon_bundle_id IS NOT NULL BEGIN
+SELECT
+    after_delete_message_plugin (OLD.ROWID, OLD.guid);
+
+END
+```
+
+Call `after_delete_message_plugin` if `message.balloon_bundle_id` not NULL, function `after_delete_message_plugin` needs to be created.
+
+# trigger `before_delete_chat_update_sync_chat_deletes`
+
+```sql
+CREATE TRIGGER before_delete_chat_update_sync_chat_deletes BEFORE DELETE ON chat WHEN is_mic_enabled () = 1 BEGIN
+INSERT INTO
+    sync_deleted_chats (guid, recordID, timestamp)
+SELECT
+    guid_for_chat (
+        OLD.chat_identifier,
+        scl.service_name,
+        OLD.style,
+        scl.filter_action,
+        scl.filter_sub_action
+    ),
+    scl.ck_record_id,
+    m.date
+FROM
+    sync_chat_slice scl
+    INNER JOIN message m ON m.rowid = (
+        SELECT
+            m.rowid
+        FROM
+            chat_recoverable_message_join crmj
+            INNER JOIN message m ON m.rowid = crmj.message_id
+        WHERE
+            chat_id = scl.chat
+        ORDER BY
+            m.date DESC
+        LIMIT
+            1
+    )
+WHERE
+    OLD.rowid = scl.chat
+    AND scl.ck_record_id IS NOT NULL;
+
+END
+```
+
+# trigger `before_delete_on_attachment`
+
+```sql
+CREATE TRIGGER before_delete_on_attachment BEFORE DELETE ON attachment BEGIN
+SELECT
+    before_delete_attachment_path (OLD.ROWID, OLD.guid);
+
+END
+```
+
+Call `before_delete_attachment_path` before delete row in attachment, function `before_delete_attachment_path` needs to be created.
+
+# trigger `before_deleting_chat_delete_chat_background_trigger`
+
+```sql
+CREATE TRIGGER before_deleting_chat_delete_chat_background_trigger BEFORE DELETE ON chat BEGIN
+SELECT
+    delete_chat_background_before_deleting_chat (OLD.guid, OLD.properties);
+
+END
+```
+
+Call `delete_chat_background_before_deleting_chat` before delete row in chat, function `delete_chat_background_before_deleting_chat` needs to be created.
+
+# trigger `delete_associated_messages_after_delete_on_message`
+
+```sql
+CREATE TRIGGER delete_associated_messages_after_delete_on_message AFTER DELETE ON message BEGIN
+DELETE FROM message
+WHERE
+    (
+        OLD.associated_message_guid IS NULL
+        AND associated_message_guid IS NOT NULL
+        AND guid = OLD.associated_message_guid
+    );
+
+END
+```
