@@ -12,7 +12,9 @@ from libbimfpy.cocoa_timestamp import *
 def get_attachment_info_from_file_db(db_file_cursor: sqlite3.Cursor, guid: str) -> dict:
     result: dict = {"result": False, "fileID": ""}
     db_file_cursor.execute(
-        'SELECT * FROM "Files" WHERE "relativePath" LIKE "%{}%";'.format(guid)
+        'SELECT * FROM "Files" WHERE "relativePath" LIKE "%{}%" AND "flags"=1;'.format(
+            guid
+        )
     )
     db_file_rows = db_file_cursor.fetchall()
     if 1 == len(db_file_rows):
