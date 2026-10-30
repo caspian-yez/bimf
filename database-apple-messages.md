@@ -437,6 +437,36 @@ CREATE TABLE message_attachment_join (
 
 This table records `attachment.ROWID`s in a `message.ROWID`.
 
+# table `sync_chat_slice`
+
+```sql
+CREATE TABLE sync_chat_slice (
+    service_name TEXT NOT NULL,
+    ck_record_id TEXT,
+    filter_action INTEGER NOT NULL,
+    filter_sub_action INTEGER NOT NULL,
+    original_guid TEXT,
+    chat INTEGER NOT NULL REFERENCES chat (ROWID) ON UPDATE CASCADE ON DELETE CASCADE,
+    UNIQUE (
+        chat,
+        service_name,
+        filter_action,
+        filter_sub_action,
+        original_guid
+    ),
+    UNIQUE (ck_record_id)
+);
+```
+
+|Column |Description    |
+|-------|---------------|
+|`service_name`         |TODO   |
+|`ck_record_id`         |TODO   |
+|`filter_action`        |TODO   |
+|`filter_sub_action`    |TODO   |
+|`original_guid`        |TODO   |
+|`chat` |Table `chat.ROWID` |
+
 # trigger `after_delete_on_attachment`
 
 ```sql
