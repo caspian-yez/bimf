@@ -173,6 +173,38 @@ def sms_db_process_attachments(
     db_sms_conn.close()
 
 
+def delete_attachment_path(path: str):
+    print("db function delete_attachment_path: path: {}".format(path))
+
+
+def after_delete_message_plugin(ROWID: int, guid: str):
+    print(
+        "db function after_delete_message_plugin: ROWID: {}, guid: {}".format(
+            ROWID, guid
+        )
+    )
+
+
+def before_delete_attachment_path(ROWID: int, guid: str):
+    print(
+        "db function before_delete_attachment_path: ROWID: {}, guid: {}".format(
+            ROWID, guid
+        )
+    )
+
+
+def delete_chat_background_before_deleting_chat(guid: str, properties: bytes):
+    print(
+        "db function delete_chat_background_before_deleting_chat: guid: {}, properties: {}".format(
+            guid, properties
+        )
+    )
+
+
+def is_mic_enabled() -> int:
+    return 0
+
+
 def sms_db_process(
     db_sms_path: str,
     year: int,
@@ -185,6 +217,19 @@ def sms_db_process(
 
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
+    db_sms_conn.create_function("delete_attachment_path", 1, delete_attachment_path)
+    db_sms_conn.create_function(
+        "after_delete_message_plugin", 2, after_delete_message_plugin
+    )
+    db_sms_conn.create_function(
+        "before_delete_attachment_path", 2, before_delete_attachment_path
+    )
+    db_sms_conn.create_function(
+        "delete_chat_background_before_deleting_chat",
+        2,
+        delete_chat_background_before_deleting_chat,
+    )
+    db_sms_conn.create_function("is_mic_enabled", 1, is_mic_enabled)
     db_sms_cursor = db_sms_conn.cursor()
     db_sms_cursor.execute('SELECT * FROM "message";')
     db_sms_rows = db_sms_cursor.fetchall()
@@ -200,6 +245,52 @@ def sms_db_process(
                         db_sms_row["ROWID"]
                     )
                 )
+                db_sms_cursor.execute(
+                    'DELETE FROM "message_attachment_join" WHERE "message_id"={};'.format(
+                        db_sms_row["ROWID"]
+                    )
+                )
+                db_sms_cursor.execute(
+                    'DELETE FROM "chat_message_join" WHERE "message_id"={};'.format(
+                        db_sms_row["ROWID"]
+                    )
+                )
+
+    db_sms_cursor.execute('DROP TRIGGER "before_delete_chat_update_sync_chat_deletes";')
+
+    db_sms_cursor.execute('SELECT * FROM "chat";')
+    db_chat_rows = db_sms_cursor.fetchall()
+    for db_chat_row in db_chat_rows:
+        db_sms_cursor.execute(
+            'SELECT * FROM "chat_message_join" WHERE "chat_id"={};'.format(
+                db_chat_row["ROWID"]
+            )
+        )
+        db_chat_message_join_rows = db_sms_cursor.fetchall()
+        if 0 == len(db_chat_message_join_rows):
+            db_sms_cursor.execute(
+                'DELETE FROM "chat" WHERE "ROWID"={};'.format(db_chat_row["ROWID"])
+            )
+            db_sms_cursor.execute(
+                'DELETE FROM "chat_handle_join" WHERE "chat_id"={};'.format(
+                    db_chat_row["ROWID"]
+                )
+            )
+            db_sms_cursor.execute(
+                'DELETE FROM "chat_service" WHERE "chat"={};'.format(
+                    db_chat_row["ROWID"]
+                )
+            )
+            db_sms_cursor.execute(
+                'DELETE FROM "sync_chat_slice" WHERE "chat"={};'.format(
+                    db_chat_row["ROWID"]
+                )
+            )
+
+    db_sms_cursor.execute('DELETE FROM "deleted_messages";')
+    db_sms_cursor.execute('DELETE FROM "sync_deleted_attachments";')
+    db_sms_cursor.execute('DELETE FROM "sync_deleted_chats";')
+    db_sms_cursor.execute('DELETE FROM "sync_deleted_messages";')
 
     db_sms_conn.commit()
     db_sms_conn.close()
