@@ -267,11 +267,9 @@ def main(args):
 
     # copy attachments to output
     for item in list_attachment_file_ids:
-        file_path = os.path.join(args.path, item["fileID"][0:2], item["fileID"])
-        new_path = os.path.join(args.output_path, item["file_id"][0:2])
-        new_file_path = os.path.join(
-            args.output_path, item["fileID"][0:2], item["fileID"]
-        )
+        file_path = os.path.join(args.path, item[0:2], item)
+        new_path = os.path.join(args.output_path, item[0:2])
+        new_file_path = os.path.join(args.output_path, item[0:2], item)
 
         if os.path.exists(file_path):
             os.makedirs(name=new_path, exist_ok=True)
