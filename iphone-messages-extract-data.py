@@ -5,63 +5,9 @@ import os
 import sqlite3
 import argparse
 import shutil
+from libbimfpy.apple_messages_db import *
 from libbimfpy.apple_streamtyped import *
 from libbimfpy.cocoa_timestamp import *
-
-
-def get_attachment_info_from_file_db(db_file_cursor: sqlite3.Cursor, guid: str) -> dict:
-    result: dict = {"result": False, "fileID": ""}
-    db_file_cursor.execute(
-        'SELECT * FROM "Files" WHERE "relativePath" LIKE "%{}%" AND "flags"=1;'.format(
-            guid
-        )
-    )
-    db_file_rows = db_file_cursor.fetchall()
-    if 1 == len(db_file_rows):
-        for db_file_row in db_file_rows:
-            result["result"] = True
-            result["fileID"] = db_file_row["fileID"]
-    else:
-        print(
-            "ERROR multiple or no result when try to find file using GUID {}".format(
-                guid
-            )
-        )
-
-    return result
-
-
-def get_attachment_info(db_sms_cursor: sqlite3.Cursor, attach_id: int) -> dict:
-    result: dict = {"result": False, "guid": ""}
-    # CREATE TABLE attachment (
-    # ROWID INTEGER PRIMARY KEY AUTOINCREMENT,
-    # guid TEXT UNIQUE NOT NULL,
-    # created_date INTEGER DEFAULT 0,
-    # start_date INTEGER DEFAULT 0,
-    # filename TEXT,
-    # uti TEXT,
-    # mime_type TEXT,
-    # transfer_state INTEGER DEFAULT 0,
-    # is_outgoing INTEGER DEFAULT 0,
-    # user_info BLOB,
-    # transfer_name TEXT,
-    # total_bytes INTEGER DEFAULT 0,
-    # is_sticker INTEGER DEFAULT 0,
-    # sticker_user_info BLOB,
-    # attribution_info BLOB,
-    # hide_attachment INTEGER DEFAULT 0)
-    db_sms_cursor.execute(
-        'SELECT * FROM "attachment" WHERE "ROWID"={};'.format(attach_id)
-    )
-    db_attachment_rows = db_sms_cursor.fetchall()
-    if 1 == len(db_attachment_rows):
-        for db_attachment_row in db_attachment_rows:
-            result["result"] = True
-            result["guid"] = db_attachment_row["guid"]
-    else:
-        print("ERROR when try to find attachment using attach_id: {}".format(attach_id))
-
-    return result
 
 
 def get_attachment_name_and_path(
@@ -69,28 +15,37 @@ def get_attachment_name_and_path(
     db_sms_cursor: sqlite3.Cursor,
     row_id: int,
 ) -> dict:
-    # one attachment info:
-    # "fileID": "",
     result: dict = {"result": False, "attachments_list": None}
     attachments_list: list = []
-    # CREATE TABLE message_attachment_join (
-    # message_id INTEGER REFERENCES message (ROWID) ON DELETE CASCADE,
-    # attachment_id INTEGER REFERENCES attachment (ROWID) ON DELETE CASCADE,
-    # UNIQUE(message_id, attachment_id))
-    db_sms_cursor.execute(
-        'SELECT * FROM "message_attachment_join" WHERE "message_id"={};'.format(row_id)
+    db_message_attachment_rows = (
+        db_sms_table_message_attachment_join_match_by_message_row_id(
+            db_sms_cursor, row_id
+        )
     )
-    db_message_attachment_rows = db_sms_cursor.fetchall()
     for db_msg_attach_row in db_message_attachment_rows:
-        attachment_info = get_attachment_info(
+        attachment_info = db_sms_table_attachment_match_by_attach_row_id(
             db_sms_cursor, db_msg_attach_row["attachment_id"]
         )
-        if attachment_info["result"]:
-            attachment_info_in_file_db = get_attachment_info_from_file_db(
-                db_file_cursor, attachment_info["guid"]
+        if 1 == len(attachment_info):
+            attachment_info_in_file_db = (
+                db_manifest_table_files_relativepath_match_by_attach_guid(
+                    db_file_cursor, attachment_info[0]["guid"]
+                )
             )
-            if attachment_info_in_file_db["result"]:
-                attachments_list.append(attachment_info_in_file_db["fileID"])
+            if 1 == len(attachment_info_in_file_db):
+                attachments_list.append(attachment_info_in_file_db[0]["fileID"])
+            else:
+                print(
+                    "ERROR multiple or no result when try to find file using attachment GUID {}".format(
+                        attachment_info[0]["guid"]
+                    )
+                )
+        else:
+            print(
+                "ERROR when try to find attachment using attach_id: {}".format(
+                    db_msg_attach_row["attachment_id"]
+                )
+            )
 
     if 0 != len(attachments_list):
         result["result"] = True
@@ -104,8 +59,6 @@ def get_attachment_name_and_path(
 def sms_db_process_attachments(
     db_files_cursor: sqlite3.Cursor,
     db_sms_path: str,
-    base_path: str,
-    output_path: str,
     year: int,
     list_attachments: list,
 ):
@@ -120,10 +73,8 @@ def sms_db_process_attachments(
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
     db_sms_cursor = db_sms_conn.cursor()
-    db_sms_cursor.execute('SELECT * FROM "message";')
-    db_sms_rows = db_sms_cursor.fetchall()
 
-    # iterate through SMS rows
+    db_sms_rows = db_sms_table_message(db_sms_cursor)
     for db_sms_row in db_sms_rows:
         # skip empty row
         if db_sms_row["attributedBody"] is None:
@@ -139,6 +90,14 @@ def sms_db_process_attachments(
                 continue
 
         if 0 != db_sms_row["cache_has_attachments"]:
+            # check balloon_bundle_id
+            if db_sms_row["balloon_bundle_id"] is not None:
+                print(
+                    "Warning: msg guid {}, balloon_bundle_id not NULL: {}".format(
+                        db_sms_row["guid"], db_sms_row["balloon_bundle_id"]
+                    )
+                )
+
             # get text for searching
             body_text = None
             if db_sms_row["text"] is None:
@@ -233,66 +192,48 @@ def sms_db_process(
     )
     db_sms_conn.create_function("is_mic_enabled", 1, is_mic_enabled)
     db_sms_cursor = db_sms_conn.cursor()
-    db_sms_cursor.execute('SELECT * FROM "message";')
-    db_sms_rows = db_sms_cursor.fetchall()
 
+    db_sms_rows = db_sms_table_message(db_sms_cursor)
     for db_sms_row in db_sms_rows:
         # older database cocoa timestamp is in seconds
         datetime_timestamp = get_datetime_from_cocoa_timestamp(db_sms_row["date"])
 
-        if 0 != year:
-            if year != datetime_timestamp.year:
-                db_sms_cursor.execute(
-                    'DELETE FROM "message" WHERE "ROWID"={};'.format(
-                        db_sms_row["ROWID"]
-                    )
-                )
-                db_sms_cursor.execute(
-                    'DELETE FROM "message_attachment_join" WHERE "message_id"={};'.format(
-                        db_sms_row["ROWID"]
-                    )
-                )
-                db_sms_cursor.execute(
-                    'DELETE FROM "chat_message_join" WHERE "message_id"={};'.format(
-                        db_sms_row["ROWID"]
-                    )
-                )
+        if year != datetime_timestamp.year:
+            db_sms_table_message_delete_by_msg_row_id(
+                db_sms_cursor, db_sms_row["ROWID"]
+            )
+            db_sms_table_message_attachment_join_delete_by_msg_row_id(
+                db_sms_cursor, db_sms_row["ROWID"]
+            )
+            db_sms_table_chat_message_join_delete_by_msg_row_id(
+                db_sms_cursor, db_sms_row["ROWID"]
+            )
 
-    db_sms_cursor.execute('DROP TRIGGER "before_delete_chat_update_sync_chat_deletes";')
+    db_sms_trigger_drop_before_delete_chat_update_sync_chat_deletes(db_sms_cursor)
 
-    db_sms_cursor.execute('SELECT * FROM "chat";')
-    db_chat_rows = db_sms_cursor.fetchall()
+    db_chat_rows = db_sms_table_chat(db_sms_cursor)
     for db_chat_row in db_chat_rows:
-        db_sms_cursor.execute(
-            'SELECT * FROM "chat_message_join" WHERE "chat_id"={};'.format(
-                db_chat_row["ROWID"]
-            )
+        db_chat_message_join_rows = db_sms_table_chat_message_join_match_by_chat_row_id(
+            db_sms_cursor, db_chat_row["ROWID"]
         )
-        db_chat_message_join_rows = db_sms_cursor.fetchall()
         if 0 == len(db_chat_message_join_rows):
-            db_sms_cursor.execute(
-                'DELETE FROM "chat" WHERE "ROWID"={};'.format(db_chat_row["ROWID"])
+            db_sms_table_chat_delete_by_chat_row_id(db_sms_cursor, db_chat_row["ROWID"])
+            db_sms_table_chat_handle_join_delete_by_chat_row_id(
+                db_sms_cursor, db_chat_row["ROWID"]
             )
-            db_sms_cursor.execute(
-                'DELETE FROM "chat_handle_join" WHERE "chat_id"={};'.format(
-                    db_chat_row["ROWID"]
-                )
+            db_sms_table_chat_service_delete_by_chat_row_id(
+                db_sms_cursor, db_chat_row["ROWID"]
             )
-            db_sms_cursor.execute(
-                'DELETE FROM "chat_service" WHERE "chat"={};'.format(
-                    db_chat_row["ROWID"]
-                )
-            )
-            db_sms_cursor.execute(
-                'DELETE FROM "sync_chat_slice" WHERE "chat"={};'.format(
-                    db_chat_row["ROWID"]
-                )
+            db_sms_table_sync_chat_slice_delete_by_chat_row_id(
+                db_sms_cursor, db_chat_row["ROWID"]
             )
 
-    db_sms_cursor.execute('DELETE FROM "deleted_messages";')
-    db_sms_cursor.execute('DELETE FROM "sync_deleted_attachments";')
-    db_sms_cursor.execute('DELETE FROM "sync_deleted_chats";')
-    db_sms_cursor.execute('DELETE FROM "sync_deleted_messages";')
+    db_sms_table_deleted_messages_delete_all(db_sms_cursor)
+    db_sms_table_sync_deleted_attachments_delete_all(db_sms_cursor)
+    db_sms_table_sync_deleted_chats_delete_all(db_sms_cursor)
+    db_sms_table_sync_deleted_messages_delete_all(db_sms_cursor)
+
+    db_sms_trigger_create_before_delete_chat_update_sync_chat_deletes(db_sms_cursor)
 
     db_sms_conn.commit()
     db_sms_conn.close()
@@ -310,22 +251,11 @@ def main(args):
 
     connection = sqlite3.connect(file_db_path)
     connection.row_factory = sqlite3.Row
-
     cursor = connection.cursor()
-
-    # CREATE TABLE Files (
-    # fileID TEXT PRIMARY KEY,
-    # domain TEXT,
-    # relativePath TEXT,
-    # flags INTEGER,
-    # file BLOB
-    # )
-    cursor.execute('SELECT * FROM "Files" WHERE "relativePath"="Library/SMS/sms.db";')
-
-    db_files_rows = cursor.fetchall()
 
     list_attachment_file_ids = list()
 
+    db_files_rows = db_manifest_table_files_find_sms_db(cursor)
     db_sms_path = None
     if 1 == len(db_files_rows):
         for db_files_row in db_files_rows:
@@ -337,8 +267,6 @@ def main(args):
             sms_db_process_attachments(
                 cursor,
                 db_sms_path,
-                args.path,
-                args.output_path,
                 args.year,
                 list_attachment_file_ids,
             )
@@ -375,18 +303,13 @@ def main(args):
     # clean up file db records not belonging to SMS
     connection = sqlite3.connect(new_file_db_path)
     connection.row_factory = sqlite3.Row
-
     cursor = connection.cursor()
-    cursor.execute('SELECT * FROM "Files";')
 
-    rows = cursor.fetchall()
-
+    rows = db_manifest_table_files(cursor)
     for row in rows:
         if row["fileID"] not in list_attachment_file_ids:
             if "Library/SMS/sms.db" not in row["relativePath"]:
-                cursor.execute(
-                    'DELETE FROM "Files" WHERE "fileID" = "{}";'.format(row["fileID"])
-                )
+                db_manifest_table_files_delete_by_fileid(row["fileID"])
 
     connection.commit()
     connection.close()
@@ -398,11 +321,9 @@ def main(args):
     # clean message db rows not outside year
     connection = sqlite3.connect(new_file_db_path)
     connection.row_factory = sqlite3.Row
-
     cursor = connection.cursor()
-    cursor.execute('SELECT * FROM "Files" WHERE "relativePath"="Library/SMS/sms.db";')
 
-    rows = cursor.fetchall()
+    rows = db_manifest_table_files_find_sms_db(cursor)
     if 1 == len(db_files_rows):
         for db_files_row in db_files_rows:
             db_sms_path = os.path.join(
