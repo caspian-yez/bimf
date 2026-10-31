@@ -44,6 +44,13 @@ def db_sms_table_chat(cursor: sqlite3.Cursor) -> list:
     return cursor.execute(sql).fetchall()
 
 
+def db_sms_table_chat_match_by_chat_row_id(
+    cursor: sqlite3.Cursor, chat_row_id: int
+) -> list:
+    sql = 'SELECT * FROM "chat" WHERE "ROWID"={};'.format(chat_row_id)
+    return cursor.execute(sql).fetchall()
+
+
 def db_sms_table_chat_delete_by_chat_row_id(
     cursor: sqlite3.Cursor, chat_row_id: int
 ) -> list:

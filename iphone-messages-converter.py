@@ -147,6 +147,29 @@ def get_phone_number_by_msg_id(cursor: sqlite3.Cursor, msg_id: int) -> list:
     return list_phone_numbers
 
 
+def get_chat_room_name_by_msg_id(cursor: sqlite3.Cursor, msg_id: int):
+    room_name = None
+    chat_msg_join_rows = db_sms_table_chat_message_join_match_by_msg_row_id(
+        cursor, msg_id
+    )
+    if 1 == len(chat_msg_join_rows):
+        chat_rows = db_sms_table_chat_match_by_chat_row_id(
+            cursor, chat_msg_join_rows[0]["chat_id"]
+        )
+        if 1 == len(chat_rows):
+            room_name = chat_rows[0]["room_name"]
+        else:
+            print(
+                "ERROR: chat id {}, belongs to multiple chats or no chat".format(
+                    chat_msg_join_rows[0]["chat_id"]
+                )
+            )
+    else:
+        print("Warning: msg id {}, belongs to multiple chats or no chat".format(msg_id))
+
+    return room_name
+
+
 def save_as_eml(eml_text: str, guid_name: str, timestamp: datetime.datetime):
     filename = get_timestamp_filename(timestamp, guid_name) + ".eml"
     if os.path.exists(filename):
@@ -217,6 +240,10 @@ def sms_db_process(
         )
 
         msg["GUID"] = db_sms_row["guid"]
+
+        room_name = get_chat_room_name_by_msg_id(db_sms_cursor, db_sms_row["ROWID"])
+        if room_name is not None:
+            msg["Chat-Room-Name"] = room_name
 
         if db_sms_row["service"] is None:
             msg["Service"] = ""
