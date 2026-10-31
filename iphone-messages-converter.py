@@ -436,6 +436,13 @@ def sms_db_process(
         else:
             msg["Subject"] = db_sms_row["subject"]
 
+        if db_sms_row["balloon_bundle_id"] is not None:
+            print(
+                "Warning: msg guid {}, balloon_bundle_id not NULL: {}".format(
+                    db_sms_row["guid"], db_sms_row["balloon_bundle_id"]
+                )
+            )
+
         if db_sms_row["text"] is None:
             body_text = decode_streamtyped(db_sms_row["attributedBody"])
             if (body_text is None) or (0 == len(body_text)):
