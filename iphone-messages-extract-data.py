@@ -309,7 +309,7 @@ def main(args):
     for row in rows:
         if row["fileID"] not in list_attachment_file_ids:
             if "Library/SMS/sms.db" not in row["relativePath"]:
-                db_manifest_table_files_delete_by_fileid(row["fileID"])
+                db_manifest_table_files_delete_by_fileid(cursor, row["fileID"])
 
     connection.commit()
     connection.close()
