@@ -7,6 +7,7 @@ import sqlite3
 import email.message
 import email.utils
 import argparse
+from libbimfpy.apple_messages_db import *
 from libbimfpy.apple_streamtyped import *
 from libbimfpy.cocoa_timestamp import *
 from libbimfpy.timestamp_filename import *
@@ -16,12 +17,9 @@ def get_attachment_info_from_file_db(
     db_file_cursor: sqlite3.Cursor, guid: str, base_path: str
 ) -> dict:
     result: dict = {"result": False, "path": ""}
-    db_file_cursor.execute(
-        'SELECT * FROM "Files" WHERE "relativePath" LIKE "%{}%" AND "flags"=1;'.format(
-            guid
-        )
+    db_file_rows = db_manifest_table_files_relativepath_match_by_attach_guid(
+        db_file_cursor, guid
     )
-    db_file_rows = db_file_cursor.fetchall()
     if 1 == len(db_file_rows):
         for db_file_row in db_file_rows:
             result["result"] = True
@@ -36,27 +34,9 @@ def get_attachment_info_from_file_db(
 
 def get_attachment_info(db_sms_cursor: sqlite3.Cursor, attach_id: int) -> dict:
     result: dict = {"result": False, "guid": "", "transfer_name": "", "total_bytes": 0}
-    # CREATE TABLE attachment (
-    # ROWID INTEGER PRIMARY KEY AUTOINCREMENT,
-    # guid TEXT UNIQUE NOT NULL,
-    # created_date INTEGER DEFAULT 0,
-    # start_date INTEGER DEFAULT 0,
-    # filename TEXT,
-    # uti TEXT,
-    # mime_type TEXT,
-    # transfer_state INTEGER DEFAULT 0,
-    # is_outgoing INTEGER DEFAULT 0,
-    # user_info BLOB,
-    # transfer_name TEXT,
-    # total_bytes INTEGER DEFAULT 0,
-    # is_sticker INTEGER DEFAULT 0,
-    # sticker_user_info BLOB,
-    # attribution_info BLOB,
-    # hide_attachment INTEGER DEFAULT 0)
-    db_sms_cursor.execute(
-        'SELECT * FROM "attachment" WHERE "ROWID"={};'.format(attach_id)
+    db_attachment_rows = db_sms_table_attachment_match_by_attach_row_id(
+        db_sms_cursor, attach_id
     )
-    db_attachment_rows = db_sms_cursor.fetchall()
     if 1 == len(db_attachment_rows):
         for db_attachment_row in db_attachment_rows:
             result["result"] = True
@@ -83,14 +63,11 @@ def get_attachment_name_and_path(
     # "mime_type": "",
     result: dict = {"result": False, "attachments_list": None}
     attachments_list: list = []
-    # CREATE TABLE message_attachment_join (
-    # message_id INTEGER REFERENCES message (ROWID) ON DELETE CASCADE,
-    # attachment_id INTEGER REFERENCES attachment (ROWID) ON DELETE CASCADE,
-    # UNIQUE(message_id, attachment_id))
-    db_sms_cursor.execute(
-        'SELECT * FROM "message_attachment_join" WHERE "message_id"={};'.format(row_id)
+    db_message_attachment_rows = (
+        db_sms_table_message_attachment_join_match_by_message_row_id(
+            db_sms_cursor, row_id
+        )
     )
-    db_message_attachment_rows = db_sms_cursor.fetchall()
     for db_msg_attach_row in db_message_attachment_rows:
         attachment_info = get_attachment_info(
             db_sms_cursor, db_msg_attach_row["attachment_id"]
@@ -117,16 +94,8 @@ def get_attachment_name_and_path(
 
 
 def get_phone_number_by_handle(cursor: sqlite3.Cursor, handle: int):
-    # CREATE TABLE handle (
-    # ROWID INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
-    # id TEXT NOT NULL,
-    # country TEXT,
-    # service TEXT NOT NULL,
-    # uncanonicalized_id TEXT,
-    # UNIQUE (id, service) )
     phone_number = ""
-    cursor.execute('SELECT * FROM "handle" WHERE "ROWID"={};'.format(handle))
-    db_handle_rows = cursor.fetchall()
+    db_handle_rows = db_sms_table_handle_match_by_handle_row_id(cursor, handle)
     if 1 == len(db_handle_rows):
         for handle_row in db_handle_rows:
             phone_number = handle_row["id"]
@@ -144,16 +113,9 @@ def get_phone_number_by_msg_id(cursor: sqlite3.Cursor, msg_id: int) -> list:
     chat_id = None
     list_phone_numbers = list()
 
-    # CREATE TABLE chat_message_join (
-    # chat_id INTEGER REFERENCES chat (ROWID) ON DELETE CASCADE,
-    # message_id INTEGER REFERENCES message (ROWID) ON DELETE CASCADE,
-    # message_date INTEGER DEFAULT 0,
-    # PRIMARY KEY (chat_id, message_id)
-    # )
-    cursor.execute(
-        'SELECT * FROM "chat_message_join" WHERE "message_id"={};'.format(msg_id)
+    chat_message_rows = db_sms_table_chat_message_join_match_by_msg_row_id(
+        cursor, msg_id
     )
-    chat_message_rows = cursor.fetchall()
     if 1 == len(chat_message_rows):
         for chat_message_row in chat_message_rows:
             chat_id = chat_message_row["chat_id"]
@@ -165,31 +127,13 @@ def get_phone_number_by_msg_id(cursor: sqlite3.Cursor, msg_id: int) -> list:
         )
         return list_phone_numbers
 
-    # CREATE TABLE chat_handle_join (
-    #     chat_id INTEGER REFERENCES chat (ROWID) ON DELETE CASCADE,
-    #     handle_id INTEGER REFERENCES handle (ROWID) ON DELETE CASCADE,
-    #     UNIQUE(chat_id, handle_id)
-    # )
-    cursor.execute(
-        'SELECT * FROM "chat_handle_join" WHERE "chat_id"={};'.format(chat_id)
+    chat_handle_rows = db_sms_table_chat_handle_join_match_by_chat_row_id(
+        cursor, chat_id
     )
-    chat_handle_rows = cursor.fetchall()
     for chat_handle_row in chat_handle_rows:
-        # CREATE TABLE handle (
-        #     ROWID INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
-        #     id TEXT NOT NULL,
-        #     country TEXT,
-        #     service TEXT NOT NULL,
-        #     uncanonicalized_id TEXT,
-        #     person_centric_id TEXT DEFAULT NULL,
-        #     UNIQUE (id, service)
-        # )
-        cursor.execute(
-            'SELECT * FROM "handle" WHERE "ROWID"={};'.format(
-                chat_handle_row["handle_id"]
-            )
+        handle_rows = db_sms_table_handle_match_by_handle_row_id(
+            cursor, chat_handle_row["handle_id"]
         )
-        handle_rows = cursor.fetchall()
         if 1 == len(handle_rows):
             for handle_row in handle_rows:
                 list_phone_numbers.append(handle_row["id"])
@@ -227,111 +171,11 @@ def sms_db_process(
     else:
         print(db_sms_path)
 
-    # CREATE TABLE message (
-    # ROWID INTEGER PRIMARY KEY AUTOINCREMENT,
-    # guid TEXT UNIQUE NOT NULL,
-    # text TEXT,
-    # replace INTEGER DEFAULT 0,
-    # service_center TEXT,
-    # handle_id INTEGER DEFAULT 0,
-    # subject TEXT,
-    # country TEXT,
-    # attributedBody BLOB,
-    # version INTEGER DEFAULT 0,
-    # type INTEGER DEFAULT 0,
-    # service TEXT,
-    # account TEXT,
-    # account_guid TEXT,
-    # error INTEGER DEFAULT 0,
-    # date INTEGER,
-    # date_read INTEGER,
-    # date_delivered INTEGER,
-    # is_delivered INTEGER DEFAULT 0,
-    # is_finished INTEGER DEFAULT 0,
-    # is_emote INTEGER DEFAULT 0,
-    # is_from_me INTEGER DEFAULT 0,
-    # is_empty INTEGER DEFAULT 0,
-    # is_delayed INTEGER DEFAULT 0,
-    # is_auto_reply INTEGER DEFAULT 0,
-    # is_prepared INTEGER DEFAULT 0,
-    # is_read INTEGER DEFAULT 0,
-    # is_system_message INTEGER DEFAULT 0,
-    # is_sent INTEGER DEFAULT 0,
-    # has_dd_results INTEGER DEFAULT 0,
-    # is_service_message INTEGER DEFAULT 0,
-    # is_forward INTEGER DEFAULT 0,
-    # was_downgraded INTEGER DEFAULT 0,
-    # is_archive INTEGER DEFAULT 0,
-    # cache_has_attachments INTEGER DEFAULT 0,
-    # cache_roomnames TEXT,
-    # was_data_detected INTEGER DEFAULT 0,
-    # was_deduplicated INTEGER DEFAULT 0,
-    # is_audio_message INTEGER DEFAULT 0,
-    # is_played INTEGER DEFAULT 0,
-    # date_played INTEGER,
-    # item_type INTEGER DEFAULT 0,
-    # other_handle INTEGER DEFAULT 0,
-    # group_title TEXT,
-    # group_action_type INTEGER DEFAULT 0,
-    # share_status INTEGER DEFAULT 0,
-    # share_direction INTEGER DEFAULT 0,
-    # is_expirable INTEGER DEFAULT 0,
-    # expire_state INTEGER DEFAULT 0,
-    # message_action_type INTEGER DEFAULT 0,
-    # message_source INTEGER DEFAULT 0,
-    # associated_message_guid TEXT,
-    # associated_message_type INTEGER DEFAULT 0,
-    # balloon_bundle_id TEXT,
-    # payload_data BLOB,
-    # expressive_send_style_id TEXT,
-    # associated_message_range_location INTEGER DEFAULT 0,
-    # associated_message_range_length INTEGER DEFAULT 0,
-    # time_expressive_send_played INTEGER,
-    # message_summary_info BLOB,
-    # ck_sync_state INTEGER DEFAULT 0,
-    # ck_record_id TEXT DEFAULT NULL,
-    # ck_record_change_tag TEXT DEFAULT NULL,
-    # destination_caller_id TEXT DEFAULT NULL,
-    # sr_ck_sync_state INTEGER DEFAULT 0,
-    # sr_ck_record_id TEXT DEFAULT NULL,
-    # sr_ck_record_change_tag TEXT DEFAULT NULL,
-    # is_corrupt INTEGER DEFAULT 0,
-    # reply_to_guid TEXT DEFAULT NULL,
-    # sort_id INTEGER DEFAULT 0,
-    # is_spam INTEGER DEFAULT 0,
-    # has_unseen_mention INTEGER DEFAULT 0,
-    # thread_originator_guid TEXT DEFAULT NULL,
-    # thread_originator_part TEXT DEFAULT NULL,
-    # syndication_ranges TEXT DEFAULT NULL,
-    # was_delivered_quietly INTEGER DEFAULT 0,
-    # did_notify_recipient INTEGER DEFAULT 0,
-    # synced_syndication_ranges TEXT DEFAULT NULL,
-    # date_retracted INTEGER DEFAULT 0,
-    # date_edited INTEGER DEFAULT 0,
-    # was_detonated INTEGER DEFAULT 0,
-    # part_count INTEGER,
-    # is_stewie INTEGER DEFAULT 0,
-    # is_kt_verified INTEGER DEFAULT 0,
-    # is_sos INTEGER DEFAULT 0,
-    # is_critical INTEGER DEFAULT 0,
-    # bia_reference_id TEXT DEFAULT NULL,
-    # fallback_hash TEXT DEFAULT NULL,
-    # associated_message_emoji TEXT DEFAULT NULL,
-    # is_pending_satellite_send INTEGER DEFAULT 0,
-    # needs_relay INTEGER DEFAULT 0,
-    # schedule_type INTEGER DEFAULT 0,
-    # schedule_state INTEGER DEFAULT 0,
-    # sent_or_received_off_grid INTEGER DEFAULT 0,
-    # date_recovered INTEGER DEFAULT 0,
-    # is_time_sensitive INTEGER DEFAULT 0,
-    # ck_chat_id TEXT
-    # )
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
     db_sms_cursor = db_sms_conn.cursor()
-    db_sms_cursor.execute('SELECT * FROM "message";')
-    db_sms_rows = db_sms_cursor.fetchall()
 
+    db_sms_rows = db_sms_table_message(db_sms_cursor)
     for db_sms_row in db_sms_rows:
 
         if db_sms_row["attributedBody"] is None:
@@ -412,6 +256,12 @@ def sms_db_process(
                 )
             )
             break
+        elif 1 < len(phone_numbers):
+            print(
+                "Warning: message id {} multiple participants".format(
+                    db_sms_row["ROWID"]
+                )
+            )
 
         # older database do not have "destination_caller_id"
         my_phone_number = default_number
@@ -512,9 +362,8 @@ def sms_db_check_attachments(
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
     db_sms_cursor = db_sms_conn.cursor()
-    db_sms_cursor.execute('SELECT * FROM "message";')
-    db_sms_rows = db_sms_cursor.fetchall()
 
+    db_sms_rows = db_sms_table_message(db_sms_cursor)
     for db_sms_row in db_sms_rows:
         if db_sms_row["attributedBody"] is None:
             if db_sms_row["text"] is None:
@@ -574,24 +423,13 @@ def main(args):
     print("Year {}, 0 is all".format(args.year))
     print("Skip write: {}".format(args.skip_write))
 
-    # CREATE TABLE Files (
-    # fileID TEXT PRIMARY KEY,
-    # domain TEXT,
-    # relativePath TEXT,
-    # flags INTEGER,
-    # file BLOB
-    # )
     db_files_path = os.path.join(args.target_backup_path, "Manifest.db")
     print(db_files_path)
     db_files_conn = sqlite3.connect(db_files_path)
     db_files_conn.row_factory = sqlite3.Row
-
     db_files_cursor = db_files_conn.cursor()
-    db_files_cursor.execute(
-        'SELECT * FROM "Files" WHERE "relativePath"="Library/SMS/sms.db";'
-    )
-    db_files_rows = db_files_cursor.fetchall()
 
+    db_files_rows = db_manifest_table_files_find_sms_db(db_files_cursor)
     if 1 == len(db_files_rows):
         for db_files_row in db_files_rows:
             db_sms_path = os.path.join(
