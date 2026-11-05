@@ -194,6 +194,8 @@ def sms_db_process(
     else:
         print(db_sms_path)
 
+    count = 0
+
     db_sms_conn = sqlite3.connect(db_sms_path)
     db_sms_conn.row_factory = sqlite3.Row
     db_sms_cursor = db_sms_conn.cursor()
@@ -368,10 +370,13 @@ def sms_db_process(
                             )
                         )
 
+        count += 1
         if not skip_write:
             save_as_eml(msg.as_string(), db_sms_row["guid"], datetime_timestamp)
 
     db_sms_conn.close()
+
+    print("messages converted: {} ".format(count))
 
 
 def sms_db_check_attachments(
