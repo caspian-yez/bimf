@@ -272,6 +272,14 @@ def process_one_message(
 
     msg["Application"] = "Apple-Messages"
 
+    if "associated_message_guid" in db_sms_row.keys():
+        if db_sms_row["associated_message_guid"] is not None:
+            msg["Associated-Message-GUID"] = db_sms_row["associated_message_guid"]
+
+    room_name = get_chat_room_name_by_msg_id(db_sms_cursor, db_sms_row["ROWID"])
+    if room_name is not None:
+        msg["Chat-Room-Name"] = room_name
+
     # older database cocoa timestamp is in seconds
     msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(
         get_cocoa_timestamp_in_ns(db_sms_row["date"])
@@ -289,9 +297,9 @@ def process_one_message(
 
     msg["GUID"] = db_sms_row["guid"]
 
-    room_name = get_chat_room_name_by_msg_id(db_sms_cursor, db_sms_row["ROWID"])
-    if room_name is not None:
-        msg["Chat-Room-Name"] = room_name
+    if "reply_to_guid" in db_sms_row.keys():
+        if db_sms_row["reply_to_guid"] is not None:
+            msg["Reply-to-GUID"] = db_sms_row["reply_to_guid"]
 
     if db_sms_row["service"] is None:
         msg["Service"] = ""
@@ -302,6 +310,10 @@ def process_one_message(
         msg["Service-Center"] = ""
     else:
         msg["Service-Center"] = db_sms_row["service_center"]
+
+    if "thread_originator_guid" in db_sms_row.keys():
+        if db_sms_row["thread_originator_guid"] is not None:
+            msg["Thread-Originator-GUID"] = db_sms_row["thread_originator_guid"]
 
     # older database cocoa timestamp is in seconds
     datetime_timestamp = get_datetime_from_cocoa_timestamp(db_sms_row["date"])
