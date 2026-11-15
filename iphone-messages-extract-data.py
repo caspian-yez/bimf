@@ -193,6 +193,7 @@ def sms_db_process(
     db_sms_conn.create_function("is_mic_enabled", 1, is_mic_enabled)
     db_sms_cursor = db_sms_conn.cursor()
 
+    # delete messages not in selected year
     db_sms_rows = db_sms_table_message(db_sms_cursor)
     for db_sms_row in db_sms_rows:
         # older database cocoa timestamp is in seconds
@@ -211,6 +212,7 @@ def sms_db_process(
 
     db_sms_trigger_drop_before_delete_chat_update_sync_chat_deletes(db_sms_cursor)
 
+    # delete chat without messages
     db_chat_rows = db_sms_table_chat(db_sms_cursor)
     for db_chat_row in db_chat_rows:
         db_chat_message_join_rows = db_sms_table_chat_message_join_match_by_chat_row_id(
@@ -221,6 +223,9 @@ def sms_db_process(
             db_sms_table_chat_handle_join_delete_by_chat_row_id(
                 db_sms_cursor, db_chat_row["ROWID"]
             )
+            db_sms_table_chat_lookup_delete_by_chat_row_id(
+                db_sms_cursor, db_chat_row["ROWID"]
+            )
             db_sms_table_chat_service_delete_by_chat_row_id(
                 db_sms_cursor, db_chat_row["ROWID"]
             )
@@ -228,6 +233,8 @@ def sms_db_process(
                 db_sms_cursor, db_chat_row["ROWID"]
             )
 
+    # delete useless data in tables
+    db_sms_table_chat_recoverable_message_join_delete_all(db_sms_cursor)
     db_sms_table_deleted_messages_delete_all(db_sms_cursor)
     db_sms_table_sync_deleted_attachments_delete_all(db_sms_cursor)
     db_sms_table_sync_deleted_chats_delete_all(db_sms_cursor)
