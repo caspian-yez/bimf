@@ -7,6 +7,7 @@ import sqlite3
 import email.message
 import email.utils
 import argparse
+from libbimfpy.apple_balloon_bundle_parser import *
 from libbimfpy.apple_messages_db import *
 from libbimfpy.apple_streamtyped import *
 from libbimfpy.cocoa_timestamp import *
@@ -180,6 +181,62 @@ def save_as_eml(eml_text: str, guid_name: str, timestamp: datetime.datetime):
         f.close()
 
 
+def parse_payload_data(balloon_bundle_id: str, payload_data) -> dict:
+    match balloon_bundle_id:
+        case "com.apple.messages.URLBalloonProvider":
+            return parse_com_apple_messages_urlballoonprovider(payload_data)
+        case "com.apple.messages.MSMessageExtensionBalloonPlugin:S682FW349Q:lewancard.ity.ity":
+            return parse_com_apple_messages_msmessageextensionballoonplugin(
+                payload_data
+            )
+        case _:
+            print("ERROR: unknown balloon_bundle_id: {}".format(balloon_bundle_id))
+
+    return None
+
+
+def get_message_body_from_text_or_attributed(db_sms_row: dict) -> dict:
+    dict_temp = dict()
+    if db_sms_row["text"] is None:
+        dict_temp["Body"] = decode_streamtyped(db_sms_row["attributedBody"])
+        if (dict_temp["Body"] is None) or (0 == len(dict_temp["Body"])):
+            print(
+                "ERROR: msg guid {} parse attributedBody failed".format(
+                    db_sms_row["guid"]
+                )
+            )
+    else:
+        dict_temp["Body"] = db_sms_row["text"]
+
+    return dict_temp
+
+
+def get_message_body(db_sms_row: dict) -> dict:
+    if db_sms_row["balloon_bundle_id"] is not None:
+        print(
+            "msg guid {}, balloon_bundle_id: {}".format(
+                db_sms_row["guid"], db_sms_row["balloon_bundle_id"]
+            )
+        )
+        if db_sms_row["attributedBody"] is not None or db_sms_row["text"] is not None:
+            str_temp = "WARNING: msg guid: {}, ".format(db_sms_row["guid"])
+            str_temp += "balloon_bundle_id not None and attributedBody "
+            str_temp += "or text not None, content overlap, needs choose"
+            print(str_temp)
+        if db_sms_row["payload_data"] is None:
+            print(
+                "msg guid {}, balloon_bundle_id: {}, payload_data is NULL".format(
+                    db_sms_row["guid"], db_sms_row["balloon_bundle_id"]
+                )
+            )
+            return get_message_body_from_text_or_attributed(db_sms_row)
+        return parse_payload_data(
+            db_sms_row["balloon_bundle_id"], db_sms_row["payload_data"]
+        )
+    else:
+        return get_message_body_from_text_or_attributed(db_sms_row)
+
+
 def process_one_message(
     db_sms_row: dict,
     db_sms_cursor: sqlite3.Cursor,
@@ -189,14 +246,17 @@ def process_one_message(
     default_number: str,
     skip_write: bool,
 ):
-    if db_sms_row["attributedBody"] is None:
-        if db_sms_row["text"] is None:
-            print(
-                "msg guid: {}, both attributedBody and text is empty".format(
-                    db_sms_row["guid"]
-                )
+    if (
+        db_sms_row["attributedBody"] is None
+        and db_sms_row["text"] is None
+        and db_sms_row["payload_data"] is None
+    ):
+        print(
+            'msg guid: {}, "text", "attributedBody" and "payload_data" is empty'.format(
+                db_sms_row["guid"]
             )
-            return False
+        )
+        return False
 
     msg = email.message.EmailMessage()
 
@@ -284,7 +344,11 @@ def process_one_message(
         list_recipients = list()
         list_recipients.append(my_phone_number)
         for phone_number in phone_numbers:
-            if sender_number != phone_number:
+            if sender_number == phone_number:
+                continue
+            elif my_phone_number == phone_number:
+                continue
+            else:
                 list_recipients.append(phone_number)
         msg["From"] = sender_number
         msg["To"] = ", ".join(list_recipients)
@@ -297,25 +361,24 @@ def process_one_message(
     else:
         msg["Subject"] = db_sms_row["subject"]
 
-    if db_sms_row["balloon_bundle_id"] is not None:
-        print(
-            "Warning: msg guid {}, balloon_bundle_id not NULL: {}".format(
-                db_sms_row["guid"], db_sms_row["balloon_bundle_id"]
-            )
-        )
-
-    if db_sms_row["text"] is None:
-        body_text = decode_streamtyped(db_sms_row["attributedBody"])
-        if (body_text is None) or (0 == len(body_text)):
-            print(
-                "ERROR: msg guid {} parse attributedBody failed".format(
-                    db_sms_row["guid"]
+    dict_body = get_message_body(db_sms_row)
+    if dict_body is None:
+        return False
+    keys = dict_body.keys()
+    for key in keys:
+        if "Body" == key:
+            msg.set_content(dict_body[key])
+        elif "Attachments" == key:
+            for attachment in dict_body[key]:
+                maintype, subtype = attachment["mime_type"].split("/", 1)
+                msg.add_attachment(
+                    attachment["data"],
+                    maintype=maintype,
+                    subtype=subtype,
+                    filename=attachment["name"],
                 )
-            )
         else:
-            msg.set_content(body_text)
-    else:
-        msg.set_content(db_sms_row["text"])
+            msg.replace_header(key, dict_body[key])
 
     if 0 != db_sms_row["cache_has_attachments"]:
         attachments = get_attachment_name_and_path(
@@ -393,7 +456,7 @@ def sms_db_process(
 
     db_sms_conn.close()
 
-    print("messages converted: {} ".format(count))
+    print("messages converted: {}".format(count))
 
 
 def sms_db_check_attachments(
