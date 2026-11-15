@@ -180,6 +180,184 @@ def save_as_eml(eml_text: str, guid_name: str, timestamp: datetime.datetime):
         f.close()
 
 
+def process_one_message(
+    db_sms_row: dict,
+    db_sms_cursor: sqlite3.Cursor,
+    db_files_cursor: sqlite3.Cursor,
+    base_path: str,
+    year: int,
+    default_number: str,
+    skip_write: bool,
+):
+    if db_sms_row["attributedBody"] is None:
+        if db_sms_row["text"] is None:
+            print(
+                "msg guid: {}, both attributedBody and text is empty".format(
+                    db_sms_row["guid"]
+                )
+            )
+            return False
+
+    msg = email.message.EmailMessage()
+
+    if db_sms_row["account"] is None:
+        msg["Account"] = ""
+    else:
+        msg["Account"] = db_sms_row["account"]
+
+    if db_sms_row["account_guid"] is None:
+        msg["Account-GUID"] = ""
+    else:
+        msg["Account-GUID"] = db_sms_row["account_guid"]
+
+    msg["Application"] = "Apple-Messages"
+
+    # older database cocoa timestamp is in seconds
+    msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(
+        get_cocoa_timestamp_in_ns(db_sms_row["date"])
+    )
+
+    # older database cocoa timestamp is in seconds
+    msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(
+        get_cocoa_timestamp_in_ns(db_sms_row["date_read"])
+    )
+
+    # older database cocoa timestamp is in seconds
+    msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
+        get_cocoa_timestamp_in_ns(db_sms_row["date_delivered"])
+    )
+
+    msg["GUID"] = db_sms_row["guid"]
+
+    room_name = get_chat_room_name_by_msg_id(db_sms_cursor, db_sms_row["ROWID"])
+    if room_name is not None:
+        msg["Chat-Room-Name"] = room_name
+
+    if db_sms_row["service"] is None:
+        msg["Service"] = ""
+    else:
+        msg["Service"] = db_sms_row["service"]
+
+    if db_sms_row["service_center"] is None:
+        msg["Service-Center"] = ""
+    else:
+        msg["Service-Center"] = db_sms_row["service_center"]
+
+    # older database cocoa timestamp is in seconds
+    datetime_timestamp = get_datetime_from_cocoa_timestamp(db_sms_row["date"])
+
+    if 0 != year:
+        if year != datetime_timestamp.year:
+            return False
+
+    msg["Date"] = email.utils.format_datetime(datetime_timestamp)
+
+    sender_number = get_phone_number_by_handle(db_sms_cursor, db_sms_row["handle_id"])
+    if 0 == len(sender_number):
+        print(
+            "ERROR: cannot find phone number by handle_id {}".format(
+                db_sms_row["handle_id"]
+            )
+        )
+        return False
+
+    phone_numbers = get_phone_number_by_msg_id(db_sms_cursor, db_sms_row["ROWID"])
+    if 0 == len(phone_numbers):
+        print(
+            "ERROR: cannot find phone numbers by message id {} and chat id".format(
+                db_sms_row["ROWID"]
+            )
+        )
+        return False
+    elif 1 < len(phone_numbers):
+        print(
+            "Warning: message id {} multiple participants".format(db_sms_row["ROWID"])
+        )
+
+    # older database do not have "destination_caller_id"
+    my_phone_number = default_number
+    if "destination_caller_id" in db_sms_row.keys():
+        if db_sms_row["destination_caller_id"] is not None:
+            my_phone_number = db_sms_row["destination_caller_id"]
+
+    if 0 == db_sms_row["is_from_me"]:
+        list_recipients = list()
+        list_recipients.append(my_phone_number)
+        for phone_number in phone_numbers:
+            if sender_number != phone_number:
+                list_recipients.append(phone_number)
+        msg["From"] = sender_number
+        msg["To"] = ", ".join(list_recipients)
+    else:
+        msg["From"] = my_phone_number
+        msg["To"] = ", ".join(phone_numbers)
+
+    if db_sms_row["subject"] is None:
+        msg["Subject"] = ""
+    else:
+        msg["Subject"] = db_sms_row["subject"]
+
+    if db_sms_row["balloon_bundle_id"] is not None:
+        print(
+            "Warning: msg guid {}, balloon_bundle_id not NULL: {}".format(
+                db_sms_row["guid"], db_sms_row["balloon_bundle_id"]
+            )
+        )
+
+    if db_sms_row["text"] is None:
+        body_text = decode_streamtyped(db_sms_row["attributedBody"])
+        if (body_text is None) or (0 == len(body_text)):
+            print(
+                "ERROR: msg guid {} parse attributedBody failed".format(
+                    db_sms_row["guid"]
+                )
+            )
+        else:
+            msg.set_content(body_text)
+    else:
+        msg.set_content(db_sms_row["text"])
+
+    if 0 != db_sms_row["cache_has_attachments"]:
+        attachments = get_attachment_name_and_path(
+            db_files_cursor, db_sms_cursor, db_sms_row["ROWID"], base_path
+        )
+        if attachments["result"]:
+            for attachment in attachments["attachments_list"]:
+                if os.path.exists(attachment["path"]):
+                    file = open(attachment["path"], "rb")
+                    file_data = file.read()
+                    if attachment["size"] != len(file_data):
+                        print(
+                            "msg guid: {}, {} file size mismatch, actual: {}, size in database: {}".format(
+                                db_sms_row["guid"],
+                                attachment["name"],
+                                len(file_data),
+                                attachment["size"],
+                            )
+                        )
+                    maintype, subtype = attachment["mime_type"].split("/", 1)
+                    msg.add_attachment(
+                        file_data,
+                        maintype=maintype,
+                        subtype=subtype,
+                        filename=attachment["name"],
+                    )
+                    file.close()
+                else:
+                    print(
+                        "msg guid: {}, cannot find {} for {}".format(
+                            db_sms_row["guid"],
+                            attachment["path"],
+                            attachment["name"],
+                        )
+                    )
+
+    if not skip_write:
+        save_as_eml(msg.as_string(), db_sms_row["guid"], datetime_timestamp)
+
+    return True
+
+
 def sms_db_process(
     db_files_cursor: sqlite3.Cursor,
     db_sms_path: str,
@@ -202,177 +380,16 @@ def sms_db_process(
 
     db_sms_rows = db_sms_table_message(db_sms_cursor)
     for db_sms_row in db_sms_rows:
-
-        if db_sms_row["attributedBody"] is None:
-            if db_sms_row["text"] is None:
-                print(
-                    "msg guid: {}, both attributedBody and text is empty".format(
-                        db_sms_row["guid"]
-                    )
-                )
-                continue
-
-        msg = email.message.EmailMessage()
-
-        if db_sms_row["account"] is None:
-            msg["Account"] = ""
-        else:
-            msg["Account"] = db_sms_row["account"]
-
-        if db_sms_row["account_guid"] is None:
-            msg["Account-GUID"] = ""
-        else:
-            msg["Account-GUID"] = db_sms_row["account_guid"]
-
-        msg["Application"] = "Apple-Messages"
-
-        # older database cocoa timestamp is in seconds
-        msg["Date-Cocoa-Timestamp-Nanoseconds"] = str(
-            get_cocoa_timestamp_in_ns(db_sms_row["date"])
-        )
-
-        # older database cocoa timestamp is in seconds
-        msg["Date-Read-Cocoa-Timestamp-Nanoseconds"] = str(
-            get_cocoa_timestamp_in_ns(db_sms_row["date_read"])
-        )
-
-        # older database cocoa timestamp is in seconds
-        msg["Date-Delivered-Cocoa-Timestamp-Nanoseconds"] = str(
-            get_cocoa_timestamp_in_ns(db_sms_row["date_delivered"])
-        )
-
-        msg["GUID"] = db_sms_row["guid"]
-
-        room_name = get_chat_room_name_by_msg_id(db_sms_cursor, db_sms_row["ROWID"])
-        if room_name is not None:
-            msg["Chat-Room-Name"] = room_name
-
-        if db_sms_row["service"] is None:
-            msg["Service"] = ""
-        else:
-            msg["Service"] = db_sms_row["service"]
-
-        if db_sms_row["service_center"] is None:
-            msg["Service-Center"] = ""
-        else:
-            msg["Service-Center"] = db_sms_row["service_center"]
-
-        # older database cocoa timestamp is in seconds
-        datetime_timestamp = get_datetime_from_cocoa_timestamp(db_sms_row["date"])
-
-        if 0 != year:
-            if year != datetime_timestamp.year:
-                continue
-
-        msg["Date"] = email.utils.format_datetime(datetime_timestamp)
-
-        sender_number = get_phone_number_by_handle(
-            db_sms_cursor, db_sms_row["handle_id"]
-        )
-        if 0 == len(sender_number):
-            print(
-                "ERROR: cannot find phone number by handle_id {}".format(
-                    db_sms_row["handle_id"]
-                )
-            )
-            break
-
-        phone_numbers = get_phone_number_by_msg_id(db_sms_cursor, db_sms_row["ROWID"])
-        if 0 == len(phone_numbers):
-            print(
-                "ERROR: cannot find phone numbers by message id {} and chat id".format(
-                    db_sms_row["ROWID"]
-                )
-            )
-            break
-        elif 1 < len(phone_numbers):
-            print(
-                "Warning: message id {} multiple participants".format(
-                    db_sms_row["ROWID"]
-                )
-            )
-
-        # older database do not have "destination_caller_id"
-        my_phone_number = default_number
-        if "destination_caller_id" in db_sms_row.keys():
-            if db_sms_row["destination_caller_id"] is not None:
-                my_phone_number = db_sms_row["destination_caller_id"]
-
-        if 0 == db_sms_row["is_from_me"]:
-            list_recipients = list()
-            list_recipients.append(my_phone_number)
-            for phone_number in phone_numbers:
-                if sender_number != phone_number:
-                    list_recipients.append(phone_number)
-            msg["From"] = sender_number
-            msg["To"] = ", ".join(list_recipients)
-        else:
-            msg["From"] = my_phone_number
-            msg["To"] = ", ".join(phone_numbers)
-
-        if db_sms_row["subject"] is None:
-            msg["Subject"] = ""
-        else:
-            msg["Subject"] = db_sms_row["subject"]
-
-        if db_sms_row["balloon_bundle_id"] is not None:
-            print(
-                "Warning: msg guid {}, balloon_bundle_id not NULL: {}".format(
-                    db_sms_row["guid"], db_sms_row["balloon_bundle_id"]
-                )
-            )
-
-        if db_sms_row["text"] is None:
-            body_text = decode_streamtyped(db_sms_row["attributedBody"])
-            if (body_text is None) or (0 == len(body_text)):
-                print(
-                    "ERROR: msg guid {} parse attributedBody failed".format(
-                        db_sms_row["guid"]
-                    )
-                )
-            else:
-                msg.set_content(body_text)
-        else:
-            msg.set_content(db_sms_row["text"])
-
-        if 0 != db_sms_row["cache_has_attachments"]:
-            attachments = get_attachment_name_and_path(
-                db_files_cursor, db_sms_cursor, db_sms_row["ROWID"], base_path
-            )
-            if attachments["result"]:
-                for attachment in attachments["attachments_list"]:
-                    if os.path.exists(attachment["path"]):
-                        file = open(attachment["path"], "rb")
-                        file_data = file.read()
-                        if attachment["size"] != len(file_data):
-                            print(
-                                "msg guid: {}, {} file size mismatch, actual: {}, size in database: {}".format(
-                                    db_sms_row["guid"],
-                                    attachment["name"],
-                                    len(file_data),
-                                    attachment["size"],
-                                )
-                            )
-                        maintype, subtype = attachment["mime_type"].split("/", 1)
-                        msg.add_attachment(
-                            file_data,
-                            maintype=maintype,
-                            subtype=subtype,
-                            filename=attachment["name"],
-                        )
-                        file.close()
-                    else:
-                        print(
-                            "msg guid: {}, cannot find {} for {}".format(
-                                db_sms_row["guid"],
-                                attachment["path"],
-                                attachment["name"],
-                            )
-                        )
-
-        count += 1
-        if not skip_write:
-            save_as_eml(msg.as_string(), db_sms_row["guid"], datetime_timestamp)
+        if process_one_message(
+            db_sms_row,
+            db_sms_cursor,
+            db_files_cursor,
+            base_path,
+            year,
+            default_number,
+            skip_write,
+        ):
+            count += 1
 
     db_sms_conn.close()
 
