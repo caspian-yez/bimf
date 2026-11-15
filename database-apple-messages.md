@@ -373,8 +373,8 @@ CREATE TABLE "message" (
 |`expire_state` |1 = expired, 0 = not expired.  |
 |`message_action_type`  |TODO   |
 |`message_source`   |TODO   |
-|`associated_message_guid`  |TODO   |
-|`associated_message_type`  |TODO   |
+|`associated_message_guid`  |For Tapbacks/reactions/edits (not normal replies)  |
+|`associated_message_type`  |Bitmask for reaction/edit type |
 |`balloon_bundle_id`    |Identifies the iMessage "balloon"/App Message extension​ that produced a given message row. It tells the Messages app (and parsers of chat.db) how to render/handle the row, instead of treating it as plain text. The actual rich content usually lives in: payload_data, attributedBody, related attachment rows.    |
 |`payload_data` |BLOB, typedstream/plist/NSKeyedArchiver    |
 |`expressive_send_style_id` |TODO   |
@@ -390,12 +390,12 @@ CREATE TABLE "message" (
 |`sr_ck_record_id`  |TODO   |
 |`sr_ck_record_change_tag`  |TODO   |
 |`is_corrupt`   |1 = corrupted, 0 = not corrupted.  |
-|`reply_to_guid`    |TODO   |
+|`reply_to_guid`    |Direct parent message being replied to |
 |`sort_id`  |TODO   |
 |`is_spam`  |1 = spam, 0 = not spam.    |
 |`has_unseen_mention`   |TODO   |
-|`thread_originator_guid`   |TODO   |
-|`thread_originator_part`   |TODO   |
+|`thread_originator_guid`   |Root message of the thread (top-level message) |
+|`thread_originator_part`   |Which part/balloon of the root message |
 |`syndication_ranges`   |TODO   |
 |`was_delivered_quietly`    |TODO   |
 |`did_notify_recipient`     |TODO   |
