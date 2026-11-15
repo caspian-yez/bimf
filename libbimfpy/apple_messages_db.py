@@ -101,7 +101,7 @@ def db_sms_table_chat_message_join_delete_by_msg_row_id(
 
 
 def db_sms_table_chat_recoverable_message_join_delete_all(
-    cursor: sqlite3.Cursor, chat_row_id: int
+    cursor: sqlite3.Cursor,
 ) -> list:
     sql = 'DELETE FROM "chat_recoverable_message_join";'
     return cursor.execute(sql).fetchall()
