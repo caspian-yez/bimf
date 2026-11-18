@@ -346,7 +346,10 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Extract apple message related files from iphone backup database to new folder "
+        "and clean up not related database data."
+    )
     # define each option with: parser.add_argument
     parser.add_argument("-p", "--path", required=True, help="iPhone backup path")
     parser.add_argument(
