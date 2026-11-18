@@ -584,7 +584,9 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Convert messages in iphone's apple message backup database into eml format"
+    )
     # define each option with: parser.add_argument
     parser.add_argument(
         "-t", "--target-backup-path", required=True, help="Path to the target backup"
