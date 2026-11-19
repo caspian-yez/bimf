@@ -158,6 +158,24 @@ CREATE TABLE chat_handle_join (
 
 This table records `handle.ROWID`s in a `chat.ROWID`.
 
+# table `chat_lookup`
+```sql
+CREATE TABLE chat_lookup (
+    identifier TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    chat INTEGER NOT NULL REFERENCES chat(ROWID) ON UPDATE CASCADE ON DELETE CASCADE,
+    priority INTEGER DEFAULT 0,
+    UNIQUE (identifier, domain)
+);
+```
+
+|Column |Description    |
+|-------|---------------|
+|identifier |TODO   |
+|domain     |TODO   |
+|chat       |Table `chat` column `ROWID` |
+|priority   |TODO   |
+
 # table `chat_message_join`
 
 ```sql
