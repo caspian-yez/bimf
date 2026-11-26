@@ -5,6 +5,15 @@ import os
 import sqlite3
 import argparse
 import shutil
+from libbimfpy.apple_messages_db_manifest_table_files import *
+from libbimfpy.apple_messages_db_sms_table_attachment import *
+from libbimfpy.apple_messages_db_sms_table_chat_handle_join import *
+from libbimfpy.apple_messages_db_sms_table_chat_lookup import *
+from libbimfpy.apple_messages_db_sms_table_chat_message_join import *
+from libbimfpy.apple_messages_db_sms_table_chat_service import *
+from libbimfpy.apple_messages_db_sms_table_chat import *
+from libbimfpy.apple_messages_db_sms_table_message_attachment_join import *
+from libbimfpy.apple_messages_db_sms_table_message import *
 from libbimfpy.apple_messages_db import *
 from libbimfpy.apple_streamtyped import *
 from libbimfpy.cocoa_timestamp import *
