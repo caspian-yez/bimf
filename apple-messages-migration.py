@@ -136,10 +136,11 @@ def get_db_sms_handles_by_chat_id(db_sms_cursor: sqlite3.Cursor, chat_id: int) -
         db_sms_chat_handle_join_rows
     ), "ERROR: cannot find handles using chat id: {}".format(chat_id)
     for db_sms_chat_handle_join_row in db_sms_chat_handle_join_rows:
-        db_sms_handle_row = get_db_sms_handle_by_handle_id(
+        db_sms_handle_rows = get_db_sms_handle_by_handle_id(
             db_sms_cursor, db_sms_chat_handle_join_row["handle_id"]
         )
-        list_handles.append(db_sms_handle_row)
+        for db_sms_handle_row in db_sms_handle_rows:
+            list_handles.append(db_sms_handle_row)
     return list_handles
 
 
@@ -147,9 +148,6 @@ def get_db_sms_chat_lookup(db_sms_cursor: sqlite3.Cursor, chat_id: int) -> list:
     chat_lookup_rows = db_sms_table_chat_lookup_match_by_chat_row_id(
         db_sms_cursor, chat_id
     )
-    assert 1 >= len(
-        chat_lookup_rows
-    ), "ERROR: multiple rows chat lookup found using chat id: {}".format(chat_id)
     return chat_lookup_rows
 
 
@@ -157,11 +155,7 @@ def get_db_sms_chat_service(db_sms_cursor: sqlite3.Cursor, chat_id: int) -> list
     chat_service_rows = db_sms_table_chat_service_match_by_chat_row_id(
         db_sms_cursor, chat_id
     )
-    list_rows = list()
-    for chat_service_row in chat_service_rows:
-        list_rows.append(chat_service_row)
-
-    return list_rows
+    return chat_service_rows
 
 
 def process_one_message(
@@ -197,7 +191,7 @@ def process_one_message(
             dict_msg["db_sms_chat_handle_rows"] = get_db_sms_handles_by_chat_id(
                 db_sms_cursor, chat_msg_join_row["chat_id"]
             )
-            dict_msg["db_sms_chat_lookup_row"] = get_db_sms_chat_lookup(
+            dict_msg["db_sms_chat_lookup_rows"] = get_db_sms_chat_lookup(
                 db_sms_cursor, chat_msg_join_row["chat_id"]
             )
             dict_msg["db_sms_chat_service_rows"] = get_db_sms_chat_service(
@@ -442,8 +436,11 @@ def insert_chat_handle_join(
 def insert_or_update_chat_lookup(
     db_sms_cursor: sqlite3.Cursor, chat_lookup_row_data: sqlite3.Row, chat_row_id: int
 ):
-    db_sms_chat_lookup_rows = db_sms_table_chat_lookup_match_by_chat_row_id(
-        db_sms_cursor, chat_row_id
+    db_sms_chat_lookup_rows = db_sms_table_chat_lookup_match_by_chat_row_id_and_others(
+        db_sms_cursor,
+        chat_row_id,
+        chat_lookup_row_data["identifier"],
+        chat_lookup_row_data["domain"],
     )
     assert 1 >= len(
         db_sms_chat_lookup_rows
@@ -526,7 +523,7 @@ def migrate_one_message(
         for handle_row_id in list_handle_row_id:
             insert_chat_handle_join(db_sms_cursor, chat_row_id, handle_row_id)
 
-        for chat_lookup_row in msg["db_sms_chat_lookup_row"]:
+        for chat_lookup_row in msg["db_sms_chat_lookup_rows"]:
             insert_or_update_chat_lookup(db_sms_cursor, chat_lookup_row, chat_row_id)
 
         for chat_service_row in msg["db_sms_chat_service_rows"]:
@@ -609,6 +606,7 @@ def main(args: argparse.Namespace):
     )
 
     connection_source_file_db.close()
+    connection_target_file_db.commit()
     connection_target_file_db.close()
 
     return

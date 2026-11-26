@@ -61,7 +61,7 @@ def db_sms_table_chat_update(
     cursor: sqlite3.Cursor, chat_row_id: int, chat_row_data: sqlite3.Row
 ):
     list_str_update = db_sms_table_chat_update_data_list(chat_row_data)
-    sql = 'UPDATE "attachment" SET {} WHERE "ROWID"={};'.format(
+    sql = 'UPDATE "chat" SET {} WHERE "ROWID"={};'.format(
         ", ".join(list_str_update), chat_row_id
     )
     return db_cursor_execute(sql, cursor)
@@ -73,7 +73,7 @@ def db_sms_table_chat_insert_column_list(row: sqlite3.Row) -> list:
     for key in keys:
         if "ROWID" == key:
             continue
-        list_temp.append(key)
+        list_temp.append('"{}"'.format(key))
     return list_temp
 
 
@@ -91,7 +91,7 @@ def db_sms_table_chat_insert_data_list(row: sqlite3.Row) -> list:
 def db_sms_table_chat_insert(cursor: sqlite3.Cursor, chat_row_data: sqlite3.Row):
     list_column_names = db_sms_table_chat_insert_column_list(chat_row_data)
     list_row_values = db_sms_table_chat_insert_data_list(chat_row_data)
-    sql = 'INSERT INTO "attachment" ({}) VALUES ({});'.format(
+    sql = 'INSERT INTO "chat" ({}) VALUES ({});'.format(
         ", ".join(list_column_names),
         ", ".join(list_row_values),
     )

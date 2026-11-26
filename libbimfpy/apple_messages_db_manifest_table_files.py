@@ -27,7 +27,7 @@ def db_manifest_table_files_update_data_list(row: sqlite3.Row) -> list:
 
 def db_manifest_table_files_update(cursor: sqlite3.Cursor, files_row_data: sqlite3.Row):
     list_str_update = db_manifest_table_files_update_data_list(files_row_data)
-    sql = 'UPDATE "Files" SET {} WHERE "fileID"={};'.format(
+    sql = 'UPDATE "Files" SET {} WHERE "fileID"=\'{}\';'.format(
         ", ".join(list_str_update), files_row_data["fileID"]
     )
     return db_cursor_execute(sql, cursor)
@@ -37,7 +37,7 @@ def db_manifest_table_files_insert_column_list(row: sqlite3.Row) -> list:
     list_temp = list()
     keys = row.keys()
     for key in keys:
-        list_temp.append(key)
+        list_temp.append('"{}"'.format(key))
     return list_temp
 
 

@@ -30,6 +30,9 @@ db_sms_table_attachment_datatype_mapping = {
     "emoji_image_content_identifier": "TEXT",
     "emoji_image_short_description": "TEXT",
     "preview_generation_state": "INTEGER",
+    "preflight_info": "BLOB",
+    "sensitivity_analysis": "INTEGER",
+    "fields_needing_sync": "INTEGER",
 }
 
 
@@ -62,7 +65,7 @@ def db_sms_table_attachment_insert_column_list(row: sqlite3.Row) -> list:
     for key in keys:
         if "ROWID" == key:
             continue
-        list_temp.append(key)
+        list_temp.append('"{}"'.format(key))
     return list_temp
 
 

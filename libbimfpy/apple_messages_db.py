@@ -10,7 +10,7 @@ def sql_value_gen(mapping: dict, key: str, value) -> str:
             if value is None:
                 return "NULL"
             else:
-                return "'{}'".format(value)
+                return "'{}'".format(value.replace("'", "''"))
         case "INTEGER" | "REAL":
             if value is None:
                 return "NULL"

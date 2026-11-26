@@ -31,7 +31,7 @@ def db_sms_table_handle_insert_column_list(row: sqlite3.Row) -> list:
     for key in keys:
         if "ROWID" == key:
             continue
-        list_temp.append(key)
+        list_temp.append('"{}"'.format(key))
     return list_temp
 
 

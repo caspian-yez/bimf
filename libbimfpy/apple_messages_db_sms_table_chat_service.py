@@ -23,7 +23,7 @@ def db_sms_table_chat_service_match_by_chat_row_id_and_service(
 def db_sms_table_chat_service_insert(
     cursor: sqlite3.Cursor, chat_row_id: int, service: str
 ) -> list:
-    sql = 'INSERT INTO "chat_service" ("service", "chat") VALUES (\'{}\', {}));'.format(
+    sql = 'INSERT INTO "chat_service" ("service", "chat") VALUES (\'{}\', {});'.format(
         service,
         chat_row_id,
     )

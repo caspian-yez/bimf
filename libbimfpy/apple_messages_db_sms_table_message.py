@@ -100,6 +100,15 @@ db_sms_table_message_datatype_mapping: dict = {
     "date_recovered": "INTEGER",
     "is_time_sensitive": "INTEGER",
     "ck_chat_id": "TEXT",
+    "index_state": "INTEGER",
+    "filter_action": "INTEGER",
+    "filter_sub_action": "INTEGER",
+    "is_preview_sent": "INTEGER",
+    "is_preview_delivered": "INTEGER",
+    "date_preview_sent": "INTEGER",
+    "date_preview_delivered": "INTEGER",
+    "date_updated": "INTEGER",
+    "retry_count": "INTEGER",
 }
 
 
@@ -119,7 +128,7 @@ def db_sms_table_message_insert_column_list(row: sqlite3.Row) -> list:
     for key in keys:
         if "ROWID" == key:
             continue
-        list_temp.append(key)
+        list_temp.append('"{}"'.format(key))
     return list_temp
 
 
@@ -149,7 +158,7 @@ def db_sms_table_message_insert(
 ) -> list:
     list_column_names = db_sms_table_message_insert_column_list(row_data)
     list_row_values = db_sms_table_handle_insert_data_list(row_data, handle_id_in_row)
-    sql = 'INSERT INTO "handle" ({}) VALUES ({});'.format(
+    sql = 'INSERT INTO "message" ({}) VALUES ({});'.format(
         ", ".join(list_column_names),
         ", ".join(list_row_values),
     )
@@ -187,7 +196,7 @@ def db_sms_table_message_update(
     handle_id_in_msg: int,
 ) -> list:
     list_str_update = db_sms_table_message_update_data_list(row_data, handle_id_in_msg)
-    sql = 'UPDATE "handle" SET {} WHERE "rowid"={};'.format(
+    sql = 'UPDATE "message" SET {} WHERE "rowid"={};'.format(
         ", ".join(list_str_update), msg_row_id
     )
     return db_cursor_execute(sql, cursor)

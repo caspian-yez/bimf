@@ -18,6 +18,15 @@ def db_sms_table_chat_lookup_match_by_chat_row_id(
     return db_cursor_execute(sql, cursor)
 
 
+def db_sms_table_chat_lookup_match_by_chat_row_id_and_others(
+    cursor: sqlite3.Cursor, chat_row_id: int, identifier: str, domain: str
+) -> list:
+    sql = 'SELECT * FROM "chat_lookup" WHERE "chat"={} AND "identifier"=\'{}\' AND "domain"=\'{}\';'.format(
+        chat_row_id, identifier, domain
+    )
+    return db_cursor_execute(sql, cursor)
+
+
 def db_sms_table_chat_lookup_delete_by_chat_row_id(
     cursor: sqlite3.Cursor, chat_row_id: int
 ) -> list:
@@ -29,7 +38,7 @@ def db_sms_table_chat_lookup_update_data_list(row: sqlite3.Row) -> list:
     list_temp = list()
     keys = row.keys()
     for key in keys:
-        if "chat" == key:
+        if "chat" == key or "identifier" == key or "domain" == key:
             continue
         str_temp = '"{}"={}'.format(
             key, sql_value_gen(db_sms_table_chat_lookup_datatype_mapping, key, row[key])
@@ -52,7 +61,7 @@ def db_sms_table_chat_lookup_insert_column_list(row: sqlite3.Row) -> list:
     list_temp = list()
     keys = row.keys()
     for key in keys:
-        list_temp.append(key)
+        list_temp.append('"{}"'.format(key))
     return list_temp
 
 

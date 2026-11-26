@@ -3,7 +3,12 @@
 import sqlite3
 from .apple_messages_db import *
 
-db_sms_table_chat_message_join_datatype_mapping = {"message_date": "INTEGER"}
+db_sms_table_chat_message_join_datatype_mapping = {
+    "message_date": "INTEGER",
+    "index_state": "INTEGER",
+    "filter_action": "INTEGER",
+    "filter_sub_action": "INTEGER",
+}
 
 
 def db_sms_table_chat_message_join_match_by_msg_row_id(
@@ -54,6 +59,8 @@ def db_sms_table_chat_message_join_update(
     list_str_update = db_sms_table_chat_message_join_update_data_list(
         chat_msg_join_row_data
     )
+    if 0 == len(list_str_update):
+        return list()
     sql = 'UPDATE "chat_message_join" SET {} WHERE "chat_id"={} AND "message_id"={};'.format(
         ", ".join(list_str_update), chat_row_id, msg_row_id
     )
@@ -64,7 +71,7 @@ def db_sms_table_chat_message_join_insert_column_list(row: sqlite3.Row) -> list:
     list_temp = list()
     keys = row.keys()
     for key in keys:
-        list_temp.append(key)
+        list_temp.append('"{}"'.format(key))
     return list_temp
 
 
