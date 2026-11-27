@@ -11,6 +11,11 @@ db_sms_table_chat_message_join_datatype_mapping = {
 }
 
 
+def db_sms_table_chat_message_join(cursor: sqlite3.Cursor) -> list:
+    sql = 'SELECT * FROM "chat_message_join";'
+    return db_cursor_execute(sql, cursor)
+
+
 def db_sms_table_chat_message_join_match_by_msg_row_id(
     cursor: sqlite3.Cursor, msg_row_id: int
 ) -> list:
@@ -63,6 +68,15 @@ def db_sms_table_chat_message_join_update(
         return list()
     sql = 'UPDATE "chat_message_join" SET {} WHERE "chat_id"={} AND "message_id"={};'.format(
         ", ".join(list_str_update), chat_row_id, msg_row_id
+    )
+    return db_cursor_execute(sql, cursor)
+
+
+def db_sms_table_chat_message_join_update_message_date(
+    cursor: sqlite3.Cursor, message_date: int, chat_row_id: int, msg_row_id: int
+):
+    sql = 'UPDATE "chat_message_join" SET "message_date"={} WHERE "chat_id"={} AND "message_id"={};'.format(
+        message_date, chat_row_id, msg_row_id
     )
     return db_cursor_execute(sql, cursor)
 

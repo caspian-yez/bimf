@@ -196,8 +196,28 @@ def db_sms_table_message_update(
     handle_id_in_msg: int,
 ) -> list:
     list_str_update = db_sms_table_message_update_data_list(row_data, handle_id_in_msg)
-    sql = 'UPDATE "message" SET {} WHERE "rowid"={};'.format(
+    sql = 'UPDATE "message" SET {} WHERE "ROWID"={};'.format(
         ", ".join(list_str_update), msg_row_id
+    )
+    return db_cursor_execute(sql, cursor)
+
+
+def db_sms_table_message_update_old_data_format(
+    cursor: sqlite3.Cursor, row_data: sqlite3.Row, new_key_value: dict
+):
+    list_temp = list()
+    keys = new_key_value.keys()
+    for key in keys:
+        list_temp.append(
+            '"{}"={}'.format(
+                key,
+                sql_value_gen(
+                    db_sms_table_message_datatype_mapping, key, new_key_value[key]
+                ),
+            )
+        )
+    sql = 'UPDATE "message" SET {} WHERE "ROWID"={};'.format(
+        ", ".join(list_temp), row_data["ROWID"]
     )
     return db_cursor_execute(sql, cursor)
 
