@@ -4,34 +4,37 @@ database apple messages
 # table `attachment`
 
 ```sql
-CREATE TABLE attachment (
-    ROWID INTEGER PRIMARY KEY AUTOINCREMENT,
-    guid TEXT UNIQUE NOT NULL,
-    created_date INTEGER DEFAULT 0,
-    start_date INTEGER DEFAULT 0,
-    filename TEXT,
-    uti TEXT,
-    mime_type TEXT,
-    transfer_state INTEGER DEFAULT 0,
-    is_outgoing INTEGER DEFAULT 0,
-    user_info BLOB,
-    transfer_name TEXT,
-    total_bytes INTEGER DEFAULT 0,
-    is_sticker INTEGER DEFAULT 0,
-    sticker_user_info BLOB,
-    attribution_info BLOB,
-    hide_attachment INTEGER DEFAULT 0,
-    ck_sync_state INTEGER DEFAULT 0,
-    ck_server_change_token_blob BLOB DEFAULT NULL,
-    ck_record_id TEXT DEFAULT NULL,
-    original_guid TEXT,
-    sr_ck_record_id TEXT DEFAULT NULL,
-    sr_ck_sync_state INTEGER DEFAULT 0,
-    sr_ck_server_change_token_blob BLOB DEFAULT NULL,
-    is_commsafety_sensitive INTEGER DEFAULT 0,
-    emoji_image_content_identifier TEXT DEFAULT NULL,
-    emoji_image_short_description TEXT DEFAULT NULL,
-    preview_generation_state INTEGER DEFAULT 0
+CREATE TABLE "attachment" (
+    "ROWID" INTEGER PRIMARY KEY AUTOINCREMENT,
+    "guid" TEXT UNIQUE NOT NULL,
+    "created_date" INTEGER DEFAULT 0,
+    "start_date" INTEGER DEFAULT 0,
+    "filename" TEXT,
+    "uti" TEXT,
+    "mime_type" TEXT,
+    "transfer_state" INTEGER DEFAULT 0,
+    "is_outgoing" INTEGER DEFAULT 0,
+    "user_info" BLOB,
+    "transfer_name" TEXT,
+    "total_bytes" INTEGER DEFAULT 0,
+    "is_sticker" INTEGER DEFAULT 0,
+    "sticker_user_info" BLOB,
+    "attribution_info" BLOB,
+    "hide_attachment" INTEGER DEFAULT 0,
+    "ck_sync_state" INTEGER DEFAULT 0,
+    "ck_server_change_token_blob" BLOB DEFAULT NULL,
+    "ck_record_id" TEXT DEFAULT NULL,
+    "original_guid" TEXT,
+    "sr_ck_record_id" TEXT DEFAULT NULL,
+    "sr_ck_sync_state" INTEGER DEFAULT 0,
+    "sr_ck_server_change_token_blob" BLOB DEFAULT NULL,
+    "is_commsafety_sensitive" INTEGER DEFAULT 0,
+    "emoji_image_content_identifier" TEXT DEFAULT NULL,
+    "emoji_image_short_description" TEXT DEFAULT NULL,
+    "preview_generation_state" INTEGER DEFAULT 0,
+    "preflight_info" BLOB DEFAULT NULL,
+    "sensitivity_analysis" INTEGER DEFAULT 0,
+    "fields_needing_sync" INTEGER DEFAULT 0
 );
 ```
 
@@ -180,9 +183,12 @@ CREATE TABLE chat_lookup (
 
 ```sql
 CREATE TABLE "chat_message_join" (
-    "chat_id" INTEGER,
-    "message_id" INTEGER,
+    "chat_id" INTEGER REFERENCES "chat" ("ROWID") ON DELETE CASCADE,
+    "message_id" INTEGER REFERENCES "message" ("ROWID") ON DELETE CASCADE,
     "message_date" INTEGER DEFAULT 0,
+    "index_state" INTEGER NOT NULL DEFAULT 0,
+    "filter_action" INTEGER NOT NULL DEFAULT 0,
+    "filter_sub_action" INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY ("chat_id", "message_id")
 );
 ```
@@ -192,6 +198,9 @@ CREATE TABLE "chat_message_join" (
 |`chat_id`      |Table `chat.ROWID`     |
 |`message_id`   |Table `message.ROWID`  |
 |`message_date` |Cocoa timestamp in nanoseconds. Cocoa timestamp in seconds in older database.  |
+|`index_state`          |TODO   |
+|`filter_action`        |TODO   |
+|`filter_sub_action`    |TODO   |
 
 This table records `message.ROWID`s in a `chat.ROWID`.
 
@@ -237,8 +246,8 @@ CREATE TABLE "handle" (
 
 ```sql
 CREATE TABLE "message" (
-    "ROWID" INTEGER,
-    "guid" TEXT NOT NULL,
+    "ROWID" INTEGER PRIMARY KEY AUTOINCREMENT,
+    "guid" TEXT UNIQUE NOT NULL,
     "text" TEXT,
     "replace" INTEGER DEFAULT 0,
     "service_center" TEXT,
@@ -334,7 +343,15 @@ CREATE TABLE "message" (
     "date_recovered" INTEGER DEFAULT 0,
     "is_time_sensitive" INTEGER DEFAULT 0,
     "ck_chat_id" TEXT,
-    PRIMARY KEY ("ROWID" AUTOINCREMENT)
+    "index_state" INTEGER DEFAULT 0,
+    "filter_action" INTEGER DEFAULT 0,
+    "filter_sub_action" INTEGER DEFAULT 0,
+    "is_preview_sent" INTEGER DEFAULT 0,
+    "is_preview_delivered" INTEGER DEFAULT 0,
+    "date_preview_sent" INTEGER,
+    "date_preview_delivered" INTEGER,
+    "date_updated" INTEGER,
+    "retry_count" INTEGER
 );
 ```
 
@@ -437,6 +454,15 @@ CREATE TABLE "message" (
 |`date_recovered`       |TODO   |
 |`is_time_sensitive`    |TODO   |
 |`ck_chat_id`   |TODO   |
+|`index_state`              |TODO   |
+|`filter_action`            |TODO   |
+|`filter_sub_action`        |TODO   |
+|`is_preview_sent`          |TODO   |
+|`is_preview_delivered`     |TODO   |
+|`date_preview_sent`        |TODO   |
+|`date_preview_delivered`   |TODO   |
+|`date_updated`             |TODO   |
+|`retry_count`              |TODO   |
 
 # table `message_attachment_join`
 
